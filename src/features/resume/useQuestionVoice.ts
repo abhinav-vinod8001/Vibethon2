@@ -11,6 +11,8 @@ type VoiceState = {
   error: string;
 };
 
+export const MAX_RECORDING_SECONDS = 25;
+
 /** Each question and language owns its recording; cancelling never submits audio. */
 export function useQuestionVoice(scope: string, language: string) {
   const [state, setState] = useState<VoiceState>({
@@ -166,11 +168,12 @@ export function useQuestionVoice(scope: string, language: string) {
       update({ status: "recording" });
       timer.current = setInterval(() => {
         const seconds = Math.min(
-          45,
+          MAX_RECORDING_SECONDS,
           Math.floor((Date.now() - startedAt) / 1000),
         );
         update({ seconds });
-        if (seconds >= 45 && active.state === "recording") active.stop();
+        if (seconds >= MAX_RECORDING_SECONDS && active.state === "recording")
+          active.stop();
       }, 250);
     } catch (error) {
       if (session.current !== token) return;

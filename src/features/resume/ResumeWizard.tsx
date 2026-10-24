@@ -16,7 +16,7 @@ import { useLanguage } from "@/features/language/LanguageProvider";
 import { LANGUAGES } from "@/i18n/languages";
 import { api } from "@/features/workspace/api";
 import type { Suggestion } from "@/features/workspace/types";
-import { useQuestionVoice } from "./useQuestionVoice";
+import { MAX_RECORDING_SECONDS, useQuestionVoice } from "./useQuestionVoice";
 
 const QUESTIONS = [
   {
@@ -434,7 +434,8 @@ export function ResumeWizard({
                   onClick={voice.stop}
                 >
                   <Square size={16} />
-                  {t("Stop recording")} ({voice.seconds} / 45 {t("seconds")})
+                  {t("Stop recording")} ({voice.seconds} /{" "}
+                  {MAX_RECORDING_SECONDS} {t("seconds")})
                 </button>
               ) : (
                 <button
@@ -459,7 +460,7 @@ export function ResumeWizard({
             <p className="muted">
               {speechEnabled
                 ? t(
-                    "Type, speak, or use both. Record up to 45 seconds; review the transcript before adding it.",
+                    "Type, speak, or use both. Record up to 25 seconds; review the transcript before adding it.",
                   )
                 : t(
                     "Voice is not available right now. You can complete every question by typing.",
