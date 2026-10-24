@@ -24,12 +24,11 @@
     ],
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*"
       ]
     },
     "types": [
-      "node",
-      "@cloudflare/workers-types"
+      "node"
     ],
     "allowImportingTsExtensions": true
   },
@@ -43,11 +42,7 @@
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    ".vinext",
-    ".wrangler",
-    ".sites-runtime",
-    "outputs",
-    "work"
+    ".next",
+    "coverage"
   ]
 }

@@ -1,58 +1,39 @@
-# Validation and evaluation log
+# Verification results — portable Next.js migration
 
-Updated 24 October 2026. Use actual observations only. Blank or not-run entries are not passes.
+Updated 24 October 2026. These observations apply to the current local migration branch, codex/portable-hosting. The previous Sites/Worker results are historical and do not establish deployment validation for this version.
 
-## Observed in this checkout after original-repository review
+## Automated checks observed
 
-| Check | Result | Evidence/limit |
+| Check | Result | Evidence / scope |
 | --- | --- | --- |
-| Imported ZIP integrity | PASS during import | 134 imported files matched the supplied ZIP before documentation cleanup |
-| Matching tests | PASS, 6/6 | node --experimental-strip-types --test tests/matching.test.ts; Node 22.19.0 |
-| Source review | Completed | Original GitHub main at 0e4c8ebbd8f099996b92c366f1b203ee9fbf0c8e compared with current app; static review only |
-| Cleanup integrity | PASS | 71 removed paths checked against recovery ZIP; Markdown links verified; product app/ code unchanged |
-| Dependency install | PASS | pnpm install --frozen-lockfile; pnpm 11.25.0, Node 22.19.0 |
-| TypeScript | PASS | npm run typecheck after cleanup |
-| Production build | PASS | npm run build; Vinext/Vite Worker build completed on Windows |
-| Worker integration | PASS, 33 assertions | npm run test:integration; built route handlers, isolated D1, distinct synthetic identities; no external AI |
-| Real Gemini generation | Not tested | Credentials/provider runtime not inspected |
-| Real Gemini embeddings | Not tested | No semantic success or quality claim |
-| Real Sarvam speech | Not tested | No Malayalam quality claim |
-| Browser hiring loop and hosted access | Not tested | No deployment inspected in this task |
+| Frozen dependency install | PASS | pnpm 11.25.0, Node 22.19.0, updated lockfile; explicit build-script allowlist |
+| TypeScript | PASS | pnpm typecheck and production build type checking |
+| Lint | PASS | ESLint checked all source paths explicitly, plus scripts/tests/config |
+| Matching tests | PASS, 6/6 | pnpm test; filters/deadlines/keyword ranking/Malayalam tokens/cosine |
+| Standard Next.js production build | PASS | pnpm build; Next.js 16.3.4; standalone output |
+| Built-server integration | PASS, 45 assertions | pnpm test:integration; actual Next.js HTTP server, temporary libSQL/SQLite database, encrypted synthetic sessions |
+| Documentation and cleanup | PASS | Local Markdown links checked; old runtime/scaffolding paths absent; direct packages reduced 44 to 18 |
+| CI and Docker configuration | Added, not executed remotely | GitHub Actions workflow and Dockerfile authored; container build/run not tested here |
 
-## Session details — fill during the two-hour sprint
+Integration coverage includes repeated migrations, public page, auth provider discovery/CSRF/session/logout, profile confirmation, owner visibility, immutable application snapshot, duplicate/stale-version/closed-vacancy rejection, manual shortlist, withdrawal, cross-origin writes, keyword fallback, unconfigured AI behavior and invalid/expired session rejection. Former platform identity headers cannot authenticate a request. No production requests or external OAuth/AI calls were made by this suite.
 
-- Person A / Person B:
-- Start / finish:
-- Demo URL or local environment:
-- Source revision and deployed revision:
-- Node / package-manager version:
-- Generation model actually used:
-- Embedding model actually used:
-- Speech model actually used:
-- Access arrangement: single-account demonstration / separately authorized accounts:
+## Still needs real staging validation
 
-## Manual gates
+| Check | Status | Required observation |
+| --- | --- | --- |
+| Hosted database connectivity/persistence | Not tested | Records survive deployment/restart and remain isolated from preview data |
+| Google OAuth browser round trip | Not tested | Configured callback, sign-in, reload and sign-out for two real accounts |
+| Real Malayalam speech | Not tested | Editable accurate-enough transcript; names/numbers manually inspected |
+| Gemini generation/embeddings | Not tested | Actual working model names, supported skill evidence and returned semantic mode |
+| Browser/mobile/keyboard flow | Not tested | Post → confirm → apply → review → shortlist → withdraw; microphone denial/stop/cancel |
+| D1 record/identity migration | Not performed | Backups, explicit ID mapping, row counts, snapshots, ownership and rollback verified |
+| Docker build/run and remote CI | Not tested | Real container/CI checks pass on target environment |
 
-| Scenario | Expected result | Actual observation | Status |
-| --- | --- | --- | --- |
-| Post → confirmed profile → apply → shortlist | Stored transaction survives reload | — | Not run |
-| Change saved profile after applying | Submitted snapshot unchanged | — | Not run |
-| Close vacancy | Hidden from discovery; new application blocked | — | Not run |
-| Duplicate / unauthorized action | Appropriate rejection; no private data leak | — | Not run |
-| Malayalam recording with name and number | Editable transcript; inspect correctness | — | Not run |
-| Denied microphone or stopped recording | Manual editing works; microphone released | — | Not run |
-| Payments task extraction | Supported skill; no invented software expertise | — | Not run |
-| Provider error | Explicit error/fallback; edits retained | — | Not run |
-| Related experience retrieval | Actual semantic mode if successful; filters enforced | — | Not run |
-| Missing accommodation or qualification | Explicit unknown; no fabrication | — | Not run |
-| Grounded answer | Quote exists and meaning is manually supported | — | Not run |
-| Vacancy containing instructions | Treat as data; no changed permissions or behavior | — | Not run |
+## Five-query retrieval smoke log
 
-## Five-query smoke evaluation
+Use the same labelled vacancies, filters and candidate examples for keyword and semantic runs. A reviewer labels acceptable jobs before looking at results. Include a no-acceptable-result example; do not count keyword fallback as semantic success.
 
-Use the same five synthetic vacancies and filters for keyword and semantic runs. Person A labels acceptable jobs before seeing B's results. Use one near miss and one no-acceptable-result query. If semantic retrieval falls back, mark semantic not tested for that row. Keep candidate information synthetic.
-
-| Query / profile | Reviewer-labelled acceptable job IDs | Keyword top 3 | Semantic top 3 | Actual mode / notes |
+| Query / profile | Acceptable job IDs | Keyword top 3 | Semantic top 3 | Actual mode / notes |
 | --- | --- | --- | --- | --- |
 | 1 | — | — | — | Not run |
 | 2 | — | — | — | Not run |
@@ -60,19 +41,8 @@ Use the same five synthetic vacancies and filters for keyword and semantic runs.
 | 4 | — | — | — | Not run |
 | 5: no acceptable match | None | — | — | Not run |
 
-Keyword: relevant result in top three for __ / __ queries with an acceptable job. Semantic: __ / __ comparable completed queries. Report false suggestions on the no-match case separately. This is a small smoke evaluation, not hiring accuracy, fairness or proof of general retrieval quality. Record per-case request time if measured; do not invent aggregate latency.
+Record observed counts, sample size, failures and request times only. This smoke evaluation does not establish hiring accuracy, fairness or general multilingual quality.
 
-## Final verification and handoff
+## Recovery and scope
 
-| Check | Environment / revision | Result / failure |
-| --- | --- | --- |
-| Matching tests | Windows, Node 22.19.0, current cleanup | PASS, 6/6 |
-| TypeScript | Windows, current cleanup | PASS |
-| Build | Windows, current cleanup | PASS |
-| Worker integration | Windows, current cleanup | PASS, 33 assertions |
-| Real provider gates | Not exercised | Not tested |
-| Demo access and rehearsal | Not exercised | Not tested |
-
-Known limitations / unresolved blockers:
-
-- Fill with actual findings. Provider and browser checks listed as not tested above remain outstanding until recorded otherwise.
+Pre-migration tracked source was archived outside the workspace as jobsathi-before-portable-hosting-2026-10-24.zip. Old generated platform output/cache directories were moved to sibling jobsathi-platform-cache-2026-10-24. No live credentials, hosted records or provider accounts were migrated. Current code is local on the migration branch; the earlier published baseline remains in remote history.

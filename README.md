@@ -1,96 +1,82 @@
 # JobSathi
 
-Turn spoken experience into a confirmed profile, discover local vacancies, and apply directly to employers.
+A Malayalam-first hiring prototype: describe experience, confirm a profile, discover a vacancy, apply deliberately and let an employer review the submitted snapshot.
 
-This workspace contains the React/TypeScript hiring prototype imported from the supplied ZIP. The [original JobSathi](https://github.com/sreerag-47/JOB_SATHI) is a separate multilingual resume builder with a Python backend. Its guided interview, PDF generation and external search are reviewed as future improvements; they are not all included here. The previously archived VoxPop dashboard was unrelated to the original JobSathi.
+This codebase now runs on **standard Next.js and Node.js**, independently of OpenAI/Sites hosting. Platform scaffolding, Cloudflare bindings, Worker runtime, custom preview/install scripts and trusted identity headers have been removed.
 
-## Current workflow
+## Recommended hosting
 
-1. Type or record experience; review suggestions and explicitly confirm the profile.
-2. Publish a vacancy from the employer workspace.
-3. Discover the vacancy and inspect its details/source-linked explanation.
-4. Deliberately submit a snapshot of the confirmed profile.
-5. Employer reviews and manually shortlists or marks contacted; the candidate can withdraw.
+Use **Vercel + hosted libSQL + Google sign-in** for the first staging deployment. It fits the standard Next.js routes and preserves the current SQLite-compatible schema. The same app can run on a Node host such as Render or through the included Dockerfile. Use a remote database on serverless hosting; a local file there is not durable storage.
 
-Bundled sample vacancies are labelled and cannot receive applications. Candidate skills are self-reported. Source quotes support traceability, not independent verification. Employers make hiring decisions.
+No new infrastructure has been provisioned. Real database/OAuth/AI credentials and deployment verification are the next phase. See [deployment instructions](docs/DEPLOYMENT.md).
 
-## Stack and capabilities
+## Start locally
 
-| Area | Implementation |
-| --- | --- |
-| UI | React/TypeScript, Next-compatible routes, Vinext runtime |
-| Hosting/data | Cloudflare Workers, D1 and Drizzle migrations |
-| Identity | Sites-managed ChatGPT identity; simulated local identity in development |
-| Search | Keyword baseline; Gemini embeddings with exact cosine search when available |
-| Explanation/extraction | Server-side Gemini adapter, schema validation and supporting quotes |
-| Speech | Server-side Sarvam adapter; Malayalam/English input setting |
-
-The interface is mostly English; an input-language option is not a fully translated Malayalam UI. No resume PDF export, external job feeds, standalone consumer auth, messaging, automatic rejection or candidate ranking is included. Provider quality and broader language support require real validation. Retrieval is bounded to a small prototype corpus, not an ANN vector index.
-
-## Quick start
-
-Use Node 22.13+ and pnpm 11.25.0, as declared in package.json. Run commands from this project root:
+Use Node 22.13+ and pnpm 11.25.0. Run from the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
-npm run build
 ```
 
-For a **fresh local database**, apply the initial migration once after the build creates dist/server/wrangler.json:
+Copy .env.example to .env.local. Keep the local database URL, generate NEXTAUTH_SECRET, and configure Google OAuth as described in the deployment guide. The development callback is http://localhost:3000/api/auth/callback/google.
 
 ```sh
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_nice_puma.sql
-npm run dev
+pnpm db:migrate
+pnpm dev
 ```
 
-Open the URL printed by the development server. Apply migrations in order and do not replay an existing schema. Local and hosted databases are separate. The build/start/runtime scripts belong to the supplied Sites integration; preserve them. The portable development path supports this Windows checkout; the install:ci helper is intended for its managed Linux environment.
+Open http://localhost:3000. Public sample browsing works without OAuth, but saving profiles, posting and applying require a configured sign-in provider. AI features separately require Gemini/Sarvam credentials. Configuration status alone does not prove a real provider request succeeds.
 
-## Optional AI configuration
+## What works in source
 
-Configure server-side variables in ignored .dev.vars locally or the hosted runtime settings, then restart/redeploy as appropriate:
+- Candidate-confirmed profiles, employer vacancies and deliberate applications.
+- Submitted profile snapshots; manual shortlist/contact and candidate withdrawal.
+- Server ownership checks, vacancy versions, closure/deadline checks and duplicate prevention.
+- Labelled sample vacancies that cannot receive applications.
+- Keyword search, optional Gemini embeddings/extraction/grounded explanations and Sarvam transcription.
+- Standard Google OAuth configuration and encrypted session cookies; no header-based identity shortcut.
+- Local or hosted libSQL connection, repeatable checked migrations and a database health endpoint.
 
-| Variable | Purpose |
-| --- | --- |
-| GEMINI_API_KEY | Generation and embeddings credential |
-| GEMINI_MODEL | Account-accessible structured-output generation model |
-| GEMINI_EMBEDDING_MODEL | Optional embedding model override |
-| SARVAM_API_KEY | Speech recognition credential |
-| SARVAM_MODEL | Optional speech model override |
+Skills are self-reported and quote containment is not proof of semantic correctness. Most UI text remains English. Resume export, external job feeds, messaging, applicant ranking and automatic hiring decisions are not implemented. Real OAuth/provider flows need staging checks; account configuration is required.
 
-See .env.example for names only; never bundle actual keys. Manual profile entry and keyword search are available without AI. Configured flags do not prove provider health; test real calls and record exact working models.
+## Structure
+
+```text
+src/app/                 Next.js pages, API routes and global styles
+src/features/workspace/  Candidate/employer UI, client API helper, loading hook and feature types
+src/components/          Shared dialog and form field
+src/domain/              Pure matching, types, validation and samples
+src/server/              Verified identity, database, HTTP and AI adapters
+src/db/                  Drizzle schema
+drizzle/                 Versioned SQL migrations
+scripts/                 Migration runner
+tests/                   Matching and built-server integration checks
+public/                  Browser assets
+docs/                    Architecture, deployment, roadmap and preserved history
+evaluation/              Actual verification results and manual gates
+.github/workflows/       CI checks
+```
 
 ## Checks
 
 ```sh
-npm test
-npm run typecheck
-npm run build
-npm run test:integration
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+pnpm test:integration
 ```
 
-Integration tests require a built Worker and run with isolated D1/synthetic identities. They make no real AI calls. Verified after cleanup on Windows: 6 matching tests, TypeScript, production build and 33 Worker integration assertions passed. Real providers and browser journeys remain untested. Details are in [evaluation/results.md](evaluation/results.md).
+Verified locally: TypeScript, lint, 6 matching tests, production build and 45 integration assertions pass. Integration starts the built Next.js server using a temporary database and signed synthetic sessions. It exercises actual routes without external OAuth or AI calls. [Verification results](evaluation/results.md) distinguish automated evidence from deployment/browser/provider checks.
 
-## Work plan and review
+## Next work
 
-- [Revised two-person, two-hour plan](docs/TWO_PERSON_TWO_HOUR_PLAN.md): ownership, phased schedule, stop rules and later restoration phases.
-- [Original implementation review](docs/IMPLEMENTATION_COMPARISON.md): source-linked findings, comparison and prioritized improvements.
-- [Detailed development notes](docs/DEVELOPMENT.md): original imported runtime/architecture documentation; root README and results log hold current cleanup/check status.
-- [Cleanup manifest](docs/CLEANUP_MANIFEST.json): removed files and full recovery backup.
-- [Older local-project summary](docs/archive/OLDER_PROJECT_SUMMARY.md): preserved VoxPop history.
+1. **Staging:** configure host/database/Google OAuth, apply migrations, validate two-account hiring and real AI calls. Plan old D1 data/identity migration if records must be retained.
+2. **Profile reliability:** cancel stale AI/recording responses; add short guided Malayalam onboarding and split remaining workspace concerns.
+3. **Retrieval:** bound embedding requests, measure against keyword results and strengthen unknown/no-match presentation.
+4. **Original features:** restore one reviewed resume export, then consider one clearly attributed external feed.
+5. **Public launch:** deletion/retention, backups, provider spend limits, monitoring and accessibility.
 
-## Layout
+The [next-phase plan](docs/NEXT_STEPS.md) includes two-person ownership and a two-hour staging schedule. [Architecture](docs/ARCHITECTURE.md) explains current boundaries; [deployment](docs/DEPLOYMENT.md) covers environment setup and Vercel/Node/Docker paths.
 
-```text
-app/          Candidate/employer workspace, API routes and domain helpers
-db/           Drizzle schema
-drizzle/      SQL migrations and migration metadata
-lib/          Retained Worker connector context, contract and preview types
-public/       Browser assets
-worker/       Worker entry point
-scripts/      Build, install, runtime and preview tooling
-tests/        Matching and isolated Worker checks
-docs/         Current plan, review, development notes and requested history
-evaluation/   Actual observations and outstanding validation
-```
-
-Unused starter UI/components, hooks, vendor styles and unreferenced helpers were removed after a recovery archive was verified. Runtime contracts, hosting configuration, migrations and licenses for retained code remain. Dependencies/lockfile are retained for reproducibility; unused dependency pruning is a separate build-verified task. GitHub source was reviewed without remote changes.
+The original GitHub resume-builder review and requested older VoxPop summary are preserved under docs/archive. They describe historical versions, not the current hosting architecture. No live hosted records were moved; D1 identity mapping needs an explicit migration. Recovery snapshots of the pre-cleanup source and generated platform caches were saved outside this workspace.
