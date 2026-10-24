@@ -1,0 +1,65 @@
+diff --git a/dist/browser-module.mjs b/dist/browser-module.mjs
+index 4d0a389de8a3db767f1fef99ed186790431aa844..be5a9b67f8f11338ba7d97a506f1fc28c5864879 100644
+--- a/dist/browser-module.mjs
++++ b/dist/browser-module.mjs
+@@ -9938,6 +9938,8 @@ class $c96c93587d49c14d$export$2e2bcd8739ae039 extends (0, $a83b9c36aaa94fd3$exp
+         }
+     }
+     applyAnchor(markRecord, baseAnchor, baseGlyphIndex) {
++    // OpenType NULL offsets mean there is no anchor in this lookup.
++    if (!markRecord.markAnchor || !baseAnchor) return;
+         let baseCoords = this.getAnchor(baseAnchor);
+         let markCoords = this.getAnchor(markRecord.markAnchor);
+         let basePos = this.positions[baseGlyphIndex];
+diff --git a/dist/browser.cjs b/dist/browser.cjs
+index a5fa901b5608575f84390e3ef0474a7789e8269a..bb12b5a2b47a550fac40dfcc6573f7aaf510ac56 100644
+--- a/dist/browser.cjs
++++ b/dist/browser.cjs
+@@ -9955,6 +9955,8 @@ class $79ea6270f0a90256$export$2e2bcd8739ae039 extends (0, $7b226e6bbeadedeb$exp
+         }
+     }
+     applyAnchor(markRecord, baseAnchor, baseGlyphIndex) {
++    // OpenType NULL offsets mean there is no anchor in this lookup.
++    if (!markRecord.markAnchor || !baseAnchor) return;
+         let baseCoords = this.getAnchor(baseAnchor);
+         let markCoords = this.getAnchor(markRecord.markAnchor);
+         let basePos = this.positions[baseGlyphIndex];
+diff --git a/dist/main.cjs b/dist/main.cjs
+index 851b2d2bbcae17e91f9f2468f61112ee2dc8fbd8..d62e371765bebfb7f8ab88b3a0377e79ed0f6733 100644
+--- a/dist/main.cjs
++++ b/dist/main.cjs
+@@ -9976,6 +9976,8 @@ class $79ea6270f0a90256$export$2e2bcd8739ae039 extends (0, $7b226e6bbeadedeb$exp
+         }
+     }
+     applyAnchor(markRecord, baseAnchor, baseGlyphIndex) {
++    // OpenType NULL offsets mean there is no anchor in this lookup.
++    if (!markRecord.markAnchor || !baseAnchor) return;
+         let baseCoords = this.getAnchor(baseAnchor);
+         let markCoords = this.getAnchor(markRecord.markAnchor);
+         let basePos = this.positions[baseGlyphIndex];
+diff --git a/dist/module.mjs b/dist/module.mjs
+index fde88fc3f23e6fff533da842186fee8402cbcde1..63b3967ef24c01929304de14364b5144e66e6589 100644
+--- a/dist/module.mjs
++++ b/dist/module.mjs
+@@ -9959,6 +9959,8 @@ class $c96c93587d49c14d$export$2e2bcd8739ae039 extends (0, $a83b9c36aaa94fd3$exp
+         }
+     }
+     applyAnchor(markRecord, baseAnchor, baseGlyphIndex) {
++    // OpenType NULL offsets mean there is no anchor in this lookup.
++    if (!markRecord.markAnchor || !baseAnchor) return;
+         let baseCoords = this.getAnchor(baseAnchor);
+         let markCoords = this.getAnchor(markRecord.markAnchor);
+         let basePos = this.positions[baseGlyphIndex];
+diff --git a/src/opentype/GPOSProcessor.js b/src/opentype/GPOSProcessor.js
+index 6a2c1f9fc9a027f17e51fb1690dea7a809cd5893..b49b45c1307d5c3fc05ec2b08f7eeb092849e35f 100644
+--- a/src/opentype/GPOSProcessor.js
++++ b/src/opentype/GPOSProcessor.js
+@@ -273,6 +273,8 @@ export default class GPOSProcessor extends OTProcessor {
+   }
+ 
+   applyAnchor(markRecord, baseAnchor, baseGlyphIndex) {
++    // OpenType NULL offsets mean there is no anchor in this lookup.
++    if (!markRecord.markAnchor || !baseAnchor) return;
+     let baseCoords = this.getAnchor(baseAnchor);
+     let markCoords = this.getAnchor(markRecord.markAnchor);
+ 

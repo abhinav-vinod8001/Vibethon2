@@ -86,6 +86,11 @@ pnpm lint
 pnpm test
 pnpm build
 pnpm test:integration
+pnpm test:standalone
 ```
 
 Integration starts a real built Next.js server with a temporary local libSQL database and signed synthetic sessions. It verifies hiring behavior and rejects forged/expired sessions without making OAuth or AI provider requests. Hosted database connectivity, real Google login, deployment routing and provider quality require staging verification.
+
+## Resume PDF packaging
+
+PDF export uses bundled font assets and PDFKit; it does not require a remote rendering service or an AI key. Keep assets/fonts and patches in the source checkout. next.config.ts explicitly traces fonts into the resume route; the Docker dependency stage copies patches before the frozen install. The standalone test exercises the same authenticated PDF endpoint from the packaged server, confirming the renderer and font are available. An actual Docker build/run and staging browser download still need environment-level verification.

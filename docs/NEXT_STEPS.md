@@ -45,7 +45,7 @@ If provider access blocks progress, timebox diagnosis and keep the conventional 
 
 ## Phase 4 — restore selected original features
 
-Start with one confirmed-profile resume template, preview, Malayalam-capable fonts and download. Omit unknown data, avoid invented claims and verify ownership for any stored artifact. Then consider one external job source with provenance, fetched time, expiry and separate external-apply behavior. Retain clearly labelled samples; never substitute synthetic vacancies as real openings.
+Confirmed-profile resume PDF export is now implemented with English/Malayalam font embedding, owner-only access, empty-section omission and multi-page layout. Validate an actual signed-in browser download on staging next. Additional templates or contact fields require explicit product decisions; do not silently expose OAuth account details. Then consider one external job source with provenance, fetched time, expiry and separate external-apply behavior. Retain clearly labelled samples; never substitute synthetic vacancies as real openings.
 
 **Gate:** PDF rendering/text extraction and authorization work; external listings are distinguishable from internal applications. No unmeasured ATS-compatibility claims.
 

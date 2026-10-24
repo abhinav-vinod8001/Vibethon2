@@ -38,8 +38,14 @@ Migrations are explicit release operations. The runner applies ordered SQL files
 
 ## Preserved product limits
 
-Retrieval still uses a bounded set of vacancies and exact cosine comparisons, without an ANN index. Most UI text remains English. Skills remain self-reported. Quote containment is a traceability check, not proof of semantic correctness. Resume PDF export, external feeds, messaging and automated hiring decisions are not implemented.
+Retrieval still uses a bounded set of vacancies and exact cosine comparisons, without an ANN index. Most UI text remains English. Skills remain self-reported. Quote containment is a traceability check, not proof of semantic correctness. External feeds, messaging and automated hiring decisions are not implemented.
 
 ## Historical records
 
 docs/archive contains the original repository review and the requested summary of the unrelated VoxPop app previously in this folder. Those documents describe historical versions. Current source paths and setup are defined here and in DEPLOYMENT.md.
+
+## Resume export
+
+GET /api/profile/resume verifies the session, loads only that user's saved/confirmed profile and renders an in-memory PDF with PDFKit. It does not accept a target user ID or read unsaved browser state. Missing profiles return 404 and unauthenticated calls return 401. The attachment has a generic filename and private/no-store response headers. No generated PDF is retained.
+
+The English/Malayalam Noto font and OFL license live in assets/fonts. Next.js traces the font into the standalone deployment. patches/README.md documents the version-pinned fontkit fix for legal NULL OpenType anchors; scripts and Docker install that patch through pnpm. Empty sections are omitted and text continues onto new pages with page numbering. The feature does not rewrite candidate claims, invent contact information or guarantee ATS compatibility.

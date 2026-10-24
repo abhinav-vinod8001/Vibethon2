@@ -1,6 +1,6 @@
 # Verification results — portable Next.js migration
 
-Updated 24 October 2026. These observations apply to the current local migration branch, codex/portable-hosting. The previous Sites/Worker results are historical and do not establish deployment validation for this version.
+Updated 25 October 2026. These observations apply to the current local migration branch, codex/portable-hosting. The previous Sites/Worker results are historical and do not establish deployment validation for this version.
 
 ## Automated checks observed
 
@@ -11,7 +11,9 @@ Updated 24 October 2026. These observations apply to the current local migration
 | Lint | PASS | ESLint checked all source paths explicitly, plus scripts/tests/config |
 | Matching tests | PASS, 6/6 | pnpm test; filters/deadlines/keyword ranking/Malayalam tokens/cosine |
 | Standard Next.js production build | PASS | pnpm build; Next.js 16.3.4; standalone output |
-| Built-server integration | PASS, 45 assertions | pnpm test:integration; actual Next.js HTTP server, temporary libSQL/SQLite database, encrypted synthetic sessions |
+| Built-server integration | PASS, 70 assertions | pnpm test:integration; actual Next.js HTTP server, temporary libSQL/SQLite database, encrypted synthetic sessions |
+| Standalone server integration | PASS, 70 assertions | pnpm test:standalone; verifies packaged renderer and font work outside the source runtime |
+| PDF visual/text QA | PASS | Synthetic English/Malayalam profiles render as one page each; long profile spans three pages; every page visually inspected, fonts embedded, empty skills omitted and all 65 experience lines retained |
 | Documentation and cleanup | PASS | Local Markdown links checked; old runtime/scaffolding paths absent; direct packages reduced 44 to 18 |
 | CI and Docker configuration | Added, not executed remotely | GitHub Actions workflow and Dockerfile authored; container build/run not tested here |
 
@@ -46,3 +48,7 @@ Record observed counts, sample size, failures and request times only. This smoke
 ## Recovery and scope
 
 Pre-migration tracked source was archived outside the workspace as jobsathi-before-portable-hosting-2026-10-24.zip. Old generated platform output/cache directories were moved to sibling jobsathi-platform-cache-2026-10-24. No live credentials, hosted records or provider accounts were migrated. Current code is local on the migration branch; the earlier published baseline remains in remote history.
+
+## Resume feature verification
+
+The expanded suite checks unauthenticated and missing-profile errors, caller-only export despite a different userId query, PDF content type/attachment, private no-store response, English/Malayalam/long-profile generation and existing hiring/auth behavior. Synthetic QA PDFs were rendered through Poppler and inspected; pypdf confirmed the correct profile owner, omitted empty section, retained final line and embedded fonts. Malayalam is visually rendered with shaping; machine text extraction may return reordered combining characters, so no general ATS/parser guarantee is claimed. Real OAuth/browser download on staging remains outstanding.

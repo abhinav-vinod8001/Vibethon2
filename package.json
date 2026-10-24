@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "node --experimental-strip-types --test tests/matching.test.ts",
     "test:integration": "node tests/integration.mjs",
+    "test:standalone": "node tests/integration.mjs --standalone",
     "db:migrate": "node scripts/migrate.mjs",
     "db:generate": "drizzle-kit generate",
     "format": "prettier --write src scripts tests drizzle.config.ts next.config.ts"
@@ -25,6 +26,7 @@
     "lucide-react": "^1.31.0",
     "next": "16.3.4",
     "next-auth": "4.24.15",
+    "pdfkit": "0.17.2",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "zod": "^3.25.76"
@@ -32,6 +34,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
+    "@types/pdfkit": "0.17.3",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "0.31.10",

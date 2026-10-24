@@ -1,4 +1,26 @@
 @import "tailwindcss";
+
+.resume-export {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.resume-export h3 {
+  font-size: 15px;
+}
+.resume-export p {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.resume-export .alert {
+  flex-basis: 100%;
+}
 :root {
   --ink: #243631;
   --muted: #77817c;

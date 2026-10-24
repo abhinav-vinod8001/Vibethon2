@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -29,6 +29,8 @@ const environment = {
   GEMINI_API_KEY: "",
   GEMINI_MODEL: "",
   SARVAM_API_KEY: "",
+  PORT: String(port),
+  HOSTNAME: "127.0.0.1",
 };
 const options = {
   cwd: process.cwd(),
@@ -99,14 +101,16 @@ try {
   checks++;
   server = spawn(
     process.execPath,
-    [
-      "node_modules/next/dist/bin/next",
-      "start",
-      "-H",
-      "127.0.0.1",
-      "-p",
-      String(port),
-    ],
+    process.argv.includes("--standalone")
+      ? [".next/standalone/server.js"]
+      : [
+          "node_modules/next/dist/bin/next",
+          "start",
+          "-H",
+          "127.0.0.1",
+          "-p",
+          String(port),
+        ],
     options,
   );
   server.stdout.on("data", (data) => {
@@ -167,6 +171,77 @@ try {
     400,
   );
   await request("/api/profile", "PUT", { profile, confirmed: true }, candidate);
+  await request("/api/profile/resume", "GET", undefined, undefined, 401);
+  await request("/api/profile/resume", "GET", undefined, employer, 404);
+  async function exportResume(user, filename) {
+    // A caller-supplied ID must never change whose profile is exported.
+    const response = await fetch(
+      base + "/api/profile/resume?userId=" + encodeURIComponent(candidate),
+      { headers: { cookie: await cookie(user) } },
+    );
+    assert.equal(response.status, 200);
+    checks++;
+    assert.equal(response.headers.get("content-type"), "application/pdf");
+    checks++;
+    assert.equal(
+      response.headers.get("content-disposition"),
+      'attachment; filename="jobsathi-resume.pdf"',
+    );
+    checks++;
+    assert.ok(response.headers.get("cache-control").includes("no-store"));
+    checks++;
+    assert.ok(
+      response.headers
+        .get("vary")
+        .toLowerCase()
+        .split(/,\s*/)
+        .includes("cookie"),
+    );
+    checks++;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
+    checks++;
+    assert.ok(bytes.length > 1000);
+    checks++;
+    if (process.env.JOBSATHI_PDF_QA_DIR) {
+      await mkdir(process.env.JOBSATHI_PDF_QA_DIR, { recursive: true });
+      await writeFile(join(process.env.JOBSATHI_PDF_QA_DIR, filename), bytes);
+    }
+  }
+  await exportResume(candidate, "english-resume.pdf");
+  const malayalamProfile = {
+    ...profile,
+    name: "അനു നായർ",
+    targetRole: "Retail Assistant",
+    location: "കൊച്ചി",
+    experience:
+      "കുടുംബത്തിന്റെ കടയിൽ സാധനങ്ങൾ ക്രമീകരിക്കുകയും ഉപഭോക്താക്കളെ സഹായിക്കുകയും ചെയ്തു. പണമിടപാടുകൾ കൈകാര്യം ചെയ്തു.",
+    skills: "",
+    availability: "പകൽ സമയത്ത് ജോലി ചെയ്യാം.",
+  };
+  await request(
+    "/api/profile",
+    "PUT",
+    { profile: malayalamProfile, confirmed: true },
+    employer,
+  );
+  await exportResume(employer, "malayalam-resume.pdf");
+  const longProfile = {
+    ...profile,
+    name: "Long Profile Candidate",
+    experience:
+      "I organised stock, assisted customers, checked orders, and collected payments.\n".repeat(
+        65,
+      ) + "FINAL EXPERIENCE LINE",
+    skills: "Organising stock and assisting customers. ".repeat(35),
+  };
+  await request(
+    "/api/profile",
+    "PUT",
+    { profile: longProfile, confirmed: true },
+    employer,
+  );
+  await exportResume(employer, "long-resume.pdf");
   const draft = {
     title: "Test Retail Assistant",
     company: "Synthetic Test Company",

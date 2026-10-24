@@ -36,8 +36,15 @@ Open http://localhost:3000. Public sample browsing works without OAuth, but savi
 - Keyword search, optional Gemini embeddings/extraction/grounded explanations and Sarvam transcription.
 - Standard Google OAuth configuration and encrypted session cookies; no header-based identity shortcut.
 - Local or hosted libSQL connection, repeatable checked migrations and a database health endpoint.
+- Resume PDF download from the saved profile, with English/Malayalam fonts, automatic pages and empty sections omitted.
 
-Skills are self-reported and quote containment is not proof of semantic correctness. Most UI text remains English. Resume export, external job feeds, messaging, applicant ranking and automatic hiring decisions are not implemented. Real OAuth/provider flows need staging checks; account configuration is required.
+Skills are self-reported and quote containment is not proof of semantic correctness. Most UI text remains English. External job feeds, messaging, applicant ranking and automatic hiring decisions are not implemented. Real OAuth/provider flows need staging checks; account configuration is required.
+
+## Download a resume
+
+Sign in, create or edit your profile, and save it after confirmation. Open **My profile → Download resume PDF**. The download includes only the saved profile; unsaved form edits are excluded. An authenticated request to GET /api/profile/resume exports only the requesting user's record, regardless of query parameters. No generated PDF is retained on the server and no AI call is made.
+
+The bundled Noto Sans Malayalam font supports English/Malayalam text. Long profiles continue onto additional pages. The source font license and documented fontkit compatibility patch are included. This is a readable resume export, not a validated claim of compatibility with every applicant tracking system.
 
 ## Structure
 
@@ -65,16 +72,17 @@ pnpm lint
 pnpm test
 pnpm build
 pnpm test:integration
+pnpm test:standalone
 ```
 
-Verified locally: TypeScript, lint, 6 matching tests, production build and 45 integration assertions pass. Integration starts the built Next.js server using a temporary database and signed synthetic sessions. It exercises actual routes without external OAuth or AI calls. [Verification results](evaluation/results.md) distinguish automated evidence from deployment/browser/provider checks.
+Verified locally: TypeScript, lint, 6 matching tests, production build and 70 integration assertions pass in both standard and standalone servers. Integration starts the built Next.js server using a temporary database and signed synthetic sessions. It exercises actual routes without external OAuth or AI calls. [Verification results](evaluation/results.md) distinguish automated evidence from deployment/browser/provider checks.
 
 ## Next work
 
 1. **Staging:** configure host/database/Google OAuth, apply migrations, validate two-account hiring and real AI calls. Plan old D1 data/identity migration if records must be retained.
 2. **Profile reliability:** cancel stale AI/recording responses; add short guided Malayalam onboarding and split remaining workspace concerns.
 3. **Retrieval:** bound embedding requests, measure against keyword results and strengthen unknown/no-match presentation.
-4. **Original features:** restore one reviewed resume export, then consider one clearly attributed external feed.
+4. **Original features:** validate the new resume download in staging, then consider one clearly attributed external feed.
 5. **Public launch:** deletion/retention, backups, provider spend limits, monitoring and accessibility.
 
 The [next-phase plan](docs/NEXT_STEPS.md) includes two-person ownership and a two-hour staging schedule. [Architecture](docs/ARCHITECTURE.md) explains current boundaries; [deployment](docs/DEPLOYMENT.md) covers environment setup and Vercel/Node/Docker paths.

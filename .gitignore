@@ -2,6 +2,8 @@
 /.next/
 /.data/
 /coverage/
+/tmp/
+/output/
 .env*
 !.env.example
 *.tsbuildinfo

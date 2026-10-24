@@ -34,6 +34,7 @@ import { useBootstrap } from "./useBootstrap";
 import type { Explanation, Suggestion, JobDraft } from "./types";
 import { Dialog } from "@/components/Dialog";
 import { Field } from "@/components/Field";
+import { ResumeDownload } from "./ResumeDownload";
 import {
   CATEGORIES,
   EMPTY_PROFILE,
@@ -1067,6 +1068,7 @@ export default function JobSathi() {
                         Your profile is private. Applying shares a snapshot with
                         the owner of that vacancy.
                       </div>
+                      <ResumeDownload />
                     </section>
                   ) : (
                     <div className="empty-state large">
