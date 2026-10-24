@@ -19,6 +19,12 @@
     "test:vercel-build": "node tests/vercel-build.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "test:database": "node --test tests/database.test.mjs",
+    "test:multilingual": "node --experimental-strip-types --test tests/multilingual.test.mjs",
+    "test:translations": "node --experimental-strip-types --test tests/translations.test.mjs",
+    "test:rag": "node --experimental-strip-types --test tests/rag.test.mjs",
+    "test:ai-database": "node --test tests/ai-database.test.mjs",
+    "test:ai-integration": "node tests/ai-integration.mjs",
+    "ai:index": "node --experimental-strip-types scripts/index-jobs.mjs",
     "format": "prettier --write src scripts tests next.config.ts"
   },
   "dependencies": {
@@ -34,6 +40,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.10",
+    "@electric-sql/pglite-pgvector": "0.0.11",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/pdfkit": "0.17.3",

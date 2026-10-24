@@ -20,8 +20,13 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm test:multilingual
+      - run: pnpm test:translations
+      - run: pnpm test:rag
+      - run: pnpm test:ai-database
       - run: pnpm test:database
       - run: pnpm build
       - run: pnpm test:integration
+      - run: pnpm test:ai-integration
       - run: pnpm test:standalone
       - run: pnpm test:vercel-build

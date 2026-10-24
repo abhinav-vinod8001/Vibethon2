@@ -34,6 +34,7 @@ export async function generate(system: string, data: unknown, schema: object) {
         contents: [{ role: "user", parts: [{ text: JSON.stringify(data) }] }],
         generationConfig: {
           temperature: 0.1,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
           responseJsonSchema: schema,
         },

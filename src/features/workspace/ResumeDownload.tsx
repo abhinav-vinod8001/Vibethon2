@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
+import { useLanguage } from "@/features/language/LanguageProvider";
+import { requestError } from "@/i18n/translate";
 
 export function ResumeDownload() {
+  const { locale, t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -11,15 +14,12 @@ export function ResumeDownload() {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/profile/resume", {
+      const response = await fetch(`/api/profile/resume?locale=${locale}`, {
         cache: "no-store",
       });
       if (!response.ok) {
         const result = await response.json();
-        throw new Error(
-          result.error ||
-            "Your resume could not be downloaded. Please try again.",
-        );
+        throw new Error(requestError(result.error, response.status));
       }
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement("a");
@@ -39,8 +39,10 @@ export function ResumeDownload() {
   return (
     <div className="resume-export">
       <div>
-        <h3>Your resume, ready to share</h3>
-        <p>Download the saved profile shown above. Save any edits first.</p>
+        <h3>{t("Your resume, ready to share")}</h3>
+        <p>
+          {t("Download the saved profile shown above. Save any edits first.")}
+        </p>
       </div>
       <button
         className="button secondary"
@@ -48,11 +50,11 @@ export function ResumeDownload() {
         disabled={busy}
       >
         {busy ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-        {busy ? "Preparing PDF…" : "Download resume PDF"}
+        {busy ? t("Preparing PDF…") : t("Download resume PDF")}
       </button>
       {error && (
         <p className="alert error" role="alert">
-          {error}
+          {t(error)}
         </p>
       )}
     </div>

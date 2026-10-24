@@ -1,5 +1,6 @@
 import { secrets } from "@/server/ai";
 import { checkOrigin, HttpError, identity, json, route } from "@/server/http";
+import { requestLocale, speechLanguage } from "@/server/language";
 export async function POST(request: Request) {
   return route(async () => {
     checkOrigin(request);
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
     const file = input.get("audio");
     if (!(file instanceof File) || file.size > 4000000 || file.size < 100)
       throw new HttpError(400, "Please send an audio recording under 4 MB.");
-    const language = input.get("language") === "English" ? "en-IN" : "ml-IN";
+    const locale = await requestLocale(input.get("locale"));
+    const language = speechLanguage(input.get("language"), locale);
     const data = new FormData();
     data.set(
       "file",
@@ -24,6 +26,7 @@ export async function POST(request: Request) {
       file.type.includes("mp4") ? "answer.m4a" : "answer.webm",
     );
     data.set("language_code", language);
+    data.set("mode", "transcribe");
     data.set("model", model || "saaras:v3");
     const response = await fetch("https://api.sarvam.ai/speech-to-text", {
       method: "POST",

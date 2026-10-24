@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Bootstrap } from "./types";
 import { api } from "./api";
 
-export function useBootstrap() {
+function useBootstrapState() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,4 +51,19 @@ export function useBootstrap() {
   }
 
   return { data, loading, error, setError, reload };
+}
+
+const BootstrapContext = createContext<ReturnType<
+  typeof useBootstrapState
+> | null>(null);
+
+export function BootstrapProvider({ children }: { children: ReactNode }) {
+  const value = useBootstrapState();
+  return createElement(BootstrapContext.Provider, { value }, children);
+}
+
+export function useBootstrap() {
+  const context = useContext(BootstrapContext);
+  if (!context) throw new Error("BootstrapProvider is required.");
+  return context;
 }

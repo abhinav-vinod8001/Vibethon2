@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { jobSchema } from "@/domain/validation";
+import type { Job } from "@/domain/types";
+import { indexJob } from "@/server/rag/indexing";
 import {
   body,
   checkOrigin,
@@ -10,6 +12,7 @@ import {
   publicJob,
   route,
 } from "@/server/http";
+export const maxDuration = 60;
 export async function POST(request: Request) {
   return route(async () => {
     checkOrigin(request);
@@ -27,8 +30,13 @@ export async function POST(request: Request) {
         "Choose a valid application deadline today or later.",
       );
     const job = await (await database()).createJob(input);
-    // Semantic search generates vectors on demand; user RPCs cannot write trusted embeddings.
-    return json({ job: publicJob(job), indexed: false }, 201);
+    const result = await indexJob(publicJob(job) as Job);
+    // Await bounded provider work so Vercel may safely end the function afterwards.
+    // A missing index never rolls back an otherwise successful vacancy submission.
+    return json(
+      { job: publicJob(job), indexed: result.indexed, indexing: result.status },
+      201,
+    );
   });
 }
 export async function PATCH(request: Request) {
@@ -38,7 +46,15 @@ export async function PATCH(request: Request) {
     const input = z
       .object({ id: z.string().uuid(), status: z.enum(["active", "closed"]) })
       .parse(await body(request));
-    await (await database()).setJobStatus(input.id, input.status);
-    return json({ ok: true });
+    const job = await (await database()).setJobStatus(input.id, input.status);
+    if (input.status === "active") {
+      const result = await indexJob(publicJob(job) as Job);
+      return json({
+        ok: true,
+        indexed: result.indexed,
+        indexing: result.status,
+      });
+    }
+    return json({ ok: true, indexed: false, indexing: "closed" });
   });
 }

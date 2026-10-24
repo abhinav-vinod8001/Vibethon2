@@ -12,7 +12,6 @@ import {
   CircleHelp,
   Clock3,
   FileCheck2,
-  Globe2,
   Handshake,
   Layers3,
   Loader2,
@@ -23,24 +22,21 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  Square,
   UserRound,
   Users,
   X,
 } from "lucide-react";
 import { api } from "./api";
 import { useBootstrap } from "./useBootstrap";
-import type { Explanation, Suggestion, JobDraft } from "./types";
+import type { Explanation, JobDraft, RagAnswer } from "./types";
+import { RagSearchAnswer } from "./RagSearchAnswer";
 import { Dialog } from "@/components/Dialog";
 import { Field } from "@/components/Field";
 import { ResumeDownload } from "./ResumeDownload";
-import {
-  CATEGORIES,
-  EMPTY_PROFILE,
-  type Application,
-  type Job,
-  type Profile,
-} from "@/domain/types";
+import { ResumeWizard } from "@/features/resume/ResumeWizard";
+import { useLanguage } from "@/features/language/LanguageProvider";
+import { LanguageSwitcher } from "@/features/language/LanguageSwitcher";
+import { CATEGORIES, type Application, type Job } from "@/domain/types";
 import { filterJobs, keywordScore } from "@/domain/matching";
 
 const EMPTY_JOB: JobDraft = {
@@ -53,18 +49,19 @@ const EMPTY_JOB: JobDraft = {
   salaryMax: "",
   description: "",
   requirements: "",
-  shift: "Day shift",
+  shift: "",
   deadline: "",
 };
-const money = (value: number) => new Intl.NumberFormat("en-IN").format(value);
-function salary(job: Job) {
+function salary(job: Job, t: (source: string) => string, locale: string) {
+  const money = (value: number) =>
+    new Intl.NumberFormat(`${locale}-IN`).format(value);
   return job.salaryMin !== null && job.salaryMax !== null
     ? `₹${money(job.salaryMin)}–${money(job.salaryMax)}`
     : job.salaryMin !== null
-      ? `From ₹${money(job.salaryMin)}`
+      ? t("From ₹{amount}").replace("{amount}", money(job.salaryMin))
       : job.salaryMax !== null
-        ? `Up to ₹${money(job.salaryMax)}`
-        : "Pay not specified";
+        ? t("Up to ₹{amount}").replace("{amount}", money(job.salaryMax))
+        : t("Pay not specified");
 }
 const categoryIcon = (category: string) =>
   category === "Delivery" ? (
@@ -78,8 +75,21 @@ const categoryIcon = (category: string) =>
   );
 
 export default function JobSathi() {
+  const { locale, t } = useLanguage();
+  const searchRequest = useRef<AbortController | null>(null);
+  const [searchAnswer, setSearchAnswer] = useState<{
+    locale: string;
+    answer: RagAnswer;
+  } | null>(null);
+  useEffect(() => () => searchRequest.current?.abort(), [locale]);
+  const [explanationLocale, setExplanationLocale] = useState(locale);
+  const [applicantSummaryLocale, setApplicantSummaryLocale] = useState(locale);
+  const [summaryApplicationId, setSummaryApplicationId] = useState("");
   const { data, loading, error, setError, reload: load } = useBootstrap();
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{
+    source: string;
+    status?: string;
+  } | null>(null);
   const [workspace, setWorkspace] = useState<"candidate" | "employer">(
     "candidate",
   );
@@ -98,24 +108,15 @@ export default function JobSathi() {
     [question, setQuestion] = useState(""),
     [detailError, setDetailError] = useState(""),
     [consent, setConsent] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false),
-    [draft, setDraft] = useState<Profile>(EMPTY_PROFILE),
-    [confirmed, setConfirmed] = useState(false),
-    [profileError, setProfileError] = useState(""),
-    [suggestions, setSuggestions] = useState<Suggestion | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [postOpen, setPostOpen] = useState(false),
     [jobDraft, setJobDraft] = useState<JobDraft>(EMPTY_JOB),
     [postError, setPostError] = useState("");
   const [helpOpen, setHelpOpen] = useState(false),
-    [recording, setRecording] = useState(false),
     [activeApplicant, setActiveApplicant] = useState<Application | null>(null),
     [applicantSummary, setApplicantSummary] = useState<Explanation | null>(
       null,
     );
-  const recorder = useRef<MediaRecorder | null>(null),
-    recordTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
-    stream = useRef<MediaStream | null>(null),
-    chunkRef = useRef<Blob[]>([]);
   async function signIn() {
     setBusy("auth");
     try {
@@ -141,33 +142,26 @@ export default function JobSathi() {
     }
   }
   useEffect(() => {
-    return () => {
-      if (recordTimer.current) clearTimeout(recordTimer.current);
-      stream.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-  useEffect(() => {
     if (toast) {
-      const timeout = setTimeout(() => setToast(""), 5000);
+      const timeout = setTimeout(() => setToast(null), 5000);
       return () => clearTimeout(timeout);
     }
   }, [toast]);
   const invalidateSearch = () => {
+    searchRequest.current?.abort();
+    searchRequest.current = null;
+    setBusy((current) => (current === "search" ? "" : current));
+    setSearchAnswer(null);
     setMatched(null);
     setNotice("");
     setSearchMode("browse");
   };
   const openProfile = () => {
-    setDraft(data?.profile || { ...EMPTY_PROFILE });
-    setSuggestions(null);
-    setConfirmed(false);
-    setProfileError("");
+    if (!data?.user) {
+      void signIn();
+      return;
+    }
     setProfileOpen(true);
-  };
-  const setProfileField = (field: keyof Profile, value: string) => {
-    setDraft((p) => ({ ...p, [field]: value }));
-    setConfirmed(false);
-    if (field === "experience") setSuggestions(null);
   };
   const navigate = (next: string) => {
     setView(next);
@@ -180,6 +174,10 @@ export default function JobSathi() {
   };
   const search = async (e?: FormEvent) => {
     e?.preventDefault();
+    searchRequest.current?.abort();
+    const controller = new AbortController();
+    searchRequest.current = controller;
+    setSearchAnswer(null);
     setBusy("search");
     setError("");
     try {
@@ -200,146 +198,52 @@ export default function JobSathi() {
         setSearchMode("keyword");
         setNotice("Keyword results. Sign in to use your profile for matching.");
       } else {
-        const result = await api<{ jobs: Job[]; mode: string; notice: string }>(
-          "/api/match",
-          {
+        let result: { jobs: Job[]; mode: string; notice: string };
+        if (query.trim()) {
+          const answer = await api<RagAnswer>("/api/rag", {
             method: "POST",
+            signal: controller.signal,
             body: JSON.stringify({
-              query,
+              question: query,
+              locale,
               location,
               category,
               type,
-              includeSamples,
             }),
-          },
-        );
+          });
+          if (controller.signal.aborted) return;
+          setSearchAnswer({ locale, answer });
+          result = answer;
+        } else {
+          result = await api<{ jobs: Job[]; mode: string; notice: string }>(
+            "/api/match",
+            {
+              method: "POST",
+              signal: controller.signal,
+              body: JSON.stringify({
+                query,
+                location,
+                category,
+                type,
+                includeSamples,
+              }),
+            },
+          );
+        }
+        if (controller.signal.aborted) return;
         setMatched(result.jobs);
-        setSearchMode(result.mode);
+        setSearchMode(
+          result.mode === "rag" || result.mode === "retrieval"
+            ? "semantic"
+            : result.mode,
+        );
         setNotice(result.notice);
       }
     } catch (e) {
-      setError((e as Error).message);
+      if (!controller.signal.aborted) setError((e as Error).message);
     } finally {
-      setBusy("");
-    }
-  };
-  const saveProfile = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy("profile");
-    setProfileError("");
-    try {
-      await api("/api/profile", {
-        method: "PUT",
-        body: JSON.stringify({ profile: draft, confirmed }),
-      });
-      await load();
-      setProfileOpen(false);
-      invalidateSearch();
-      setToast("Your confirmed profile is saved.");
-    } catch (e) {
-      setProfileError((e as Error).message);
-    } finally {
-      setBusy("");
-    }
-  };
-  const extract = async () => {
-    setBusy("extract");
-    setProfileError("");
-    try {
-      const result = await api<Suggestion>("/api/ai", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "extract",
-          transcript: draft.experience,
-          language: draft.language,
-        }),
-      });
-      setSuggestions(result);
-    } catch (e) {
-      setProfileError((e as Error).message);
-    } finally {
-      setBusy("");
-    }
-  };
-  const stopRecording = () => {
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    if (recordTimer.current) clearTimeout(recordTimer.current);
-  };
-  const record = async () => {
-    setProfileError("");
-    if (recording) {
-      stopRecording();
-      return;
-    }
-    if (!data?.ai.speech) {
-      setProfileError(
-        "Voice transcription is not connected yet. You can type in Malayalam or English below.",
-      );
-      return;
-    }
-    try {
-      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
-        throw new Error(
-          "This browser cannot record audio. Please type your answer.",
-        );
-      stream.current = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      chunkRef.current = [];
-      const mime = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/mp4")
-          ? "audio/mp4"
-          : "";
-      const rec = new MediaRecorder(
-        stream.current,
-        mime ? { mimeType: mime } : undefined,
-      );
-      recorder.current = rec;
-      rec.ondataavailable = (e) => {
-        if (e.data.size) chunkRef.current.push(e.data);
-      };
-      rec.onstop = async () => {
-        setRecording(false);
-        stream.current?.getTracks().forEach((t) => t.stop());
-        setBusy("transcribe");
-        try {
-          const fd = new FormData();
-          fd.set(
-            "audio",
-            new Blob(chunkRef.current, { type: rec.mimeType }),
-            rec.mimeType.includes("mp4") ? "answer.m4a" : "answer.webm",
-          );
-          fd.set("language", draft.language);
-          const result = await api<{ transcript: string }>("/api/transcribe", {
-            method: "POST",
-            body: fd,
-          });
-          setDraft((p) => ({
-            ...p,
-            experience: p.experience
-              ? `${p.experience}\n${result.transcript}`
-              : result.transcript,
-          }));
-          setConfirmed(false);
-          setSuggestions(null);
-        } catch (e) {
-          setProfileError((e as Error).message);
-        } finally {
-          setBusy("");
-        }
-      };
-      rec.start();
-      setRecording(true);
-      recordTimer.current = setTimeout(() => {
-        if (rec.state === "recording") rec.stop();
-      }, 45000);
-    } catch (e) {
-      stream.current?.getTracks().forEach((t) => t.stop());
-      setProfileError(
-        (e as Error).message ||
-          "Microphone access was unavailable. Please type your answer.",
-      );
+      if (searchRequest.current === controller)
+        setBusy((current) => (current === "search" ? "" : current));
     }
   };
   const showJob = (job: Job) => {
@@ -351,6 +255,7 @@ export default function JobSathi() {
   };
   const explain = async () => {
     if (!selected) return;
+    const requestLocale = locale;
     setBusy("explain");
     setDetailError("");
     try {
@@ -359,11 +264,13 @@ export default function JobSathi() {
           method: "POST",
           body: JSON.stringify({
             action: "explain",
+            locale,
             jobId: selected.id,
             question,
           }),
         }),
       );
+      setExplanationLocale(requestLocale);
     } catch (e) {
       setDetailError((e as Error).message);
     } finally {
@@ -385,7 +292,9 @@ export default function JobSathi() {
       });
       await load();
       setSelected(null);
-      setToast("Application submitted. You can track it in My applications.");
+      setToast({
+        source: "Application submitted. You can track it in My applications.",
+      });
     } catch (e) {
       setDetailError((e as Error).message);
     } finally {
@@ -409,7 +318,9 @@ export default function JobSathi() {
       setPostOpen(false);
       setJobDraft(EMPTY_JOB);
       invalidateSearch();
-      setToast("Vacancy published. It is now available in job discovery.");
+      setToast({
+        source: "Vacancy published. It is now available in job discovery.",
+      });
     } catch (e) {
       setPostError((e as Error).message);
     } finally {
@@ -428,11 +339,12 @@ export default function JobSathi() {
       });
       await load();
       invalidateSearch();
-      setToast(
-        job.status === "active"
-          ? "Vacancy closed. New applications are blocked."
-          : "Vacancy reopened.",
-      );
+      setToast({
+        source:
+          job.status === "active"
+            ? "Vacancy closed. New applications are blocked."
+            : "Vacancy reopened.",
+      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -448,7 +360,7 @@ export default function JobSathi() {
       });
       await load();
       setActiveApplicant(null);
-      setToast(`Application ${status}.`);
+      setToast({ source: "Application updated:", status });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -457,6 +369,8 @@ export default function JobSathi() {
   };
   const summarize = async () => {
     if (!activeApplicant) return;
+    const requestLocale = locale;
+    const requestApplicationId = activeApplicant.id;
     setBusy("summary");
     setDetailError("");
     try {
@@ -465,11 +379,14 @@ export default function JobSathi() {
           method: "POST",
           body: JSON.stringify({
             action: "applicant",
+            locale,
             jobId: activeApplicant.jobId,
             applicationId: activeApplicant.id,
           }),
         }),
       );
+      setApplicantSummaryLocale(requestLocale);
+      setSummaryApplicationId(requestApplicationId);
     } catch (e) {
       setDetailError((e as Error).message);
     } finally {
@@ -492,7 +409,7 @@ export default function JobSathi() {
             switchWorkspace("candidate");
             navigate("discover");
           }}
-          aria-label="JobSathi home"
+          aria-label={t("JobSathi home")}
         >
           <span className="brand-symbol">
             <Handshake size={24} />
@@ -502,8 +419,8 @@ export default function JobSathi() {
             <i />
           </span>
         </button>
-        <div className="workspace-label">YOUR WORKSPACE</div>
-        <nav aria-label="Main navigation">
+        <div className="workspace-label">{t("YOUR WORKSPACE")}</div>
+        <nav aria-label={t("Main navigation")}>
           {workspace === "candidate" ? (
             <>
               <button
@@ -511,7 +428,7 @@ export default function JobSathi() {
                 onClick={() => navigate("discover")}
               >
                 <Search />
-                Find opportunities
+                {t("Find opportunities")}
                 <span className="nav-dot" />
               </button>
               <button
@@ -521,7 +438,7 @@ export default function JobSathi() {
                 onClick={() => navigate("applications")}
               >
                 <FileCheck2 />
-                My applications
+                {t("My applications")}
                 {Boolean(data?.applications.length) && (
                   <span className="nav-count">{data?.applications.length}</span>
                 )}
@@ -531,7 +448,7 @@ export default function JobSathi() {
                 onClick={() => navigate("profile")}
               >
                 <UserRound />
-                My profile
+                {t("My resume")}
               </button>
             </>
           ) : (
@@ -541,7 +458,7 @@ export default function JobSathi() {
                 onClick={() => navigate("overview")}
               >
                 <BriefcaseBusiness />
-                Your vacancies
+                {t("Your vacancies")}
               </button>
               <button
                 className={
@@ -550,7 +467,7 @@ export default function JobSathi() {
                 onClick={() => navigate("applicants")}
               >
                 <Users />
-                Applications
+                {t("Applications")}
                 {Boolean(data?.employerApplications.length) && (
                   <span className="nav-count">
                     {data?.employerApplications.length}
@@ -563,22 +480,23 @@ export default function JobSathi() {
         <div className="sidebar-note">
           <span className="note-star">✳</span>
           <h3>
-            A little support.
-            <br />A new beginning.
+            {t("A little support.")}
+            <br />
+            {t("A new beginning.")}
           </h3>
-          <p>Good work starts with being understood.</p>
+          <p>{t("Good work starts with being understood.")}</p>
           <button onClick={() => setHelpOpen(true)}>
-            How JobSathi helps <ArrowUpRight size={15} />
+            {t("How JobSathi helps")} <ArrowUpRight size={15} />
           </button>
         </div>
         <div className="sidebar-bottom">
           <button className="nav-item" onClick={() => setHelpOpen(true)}>
             <CircleHelp />
-            Help & how it works
+            {t("Help & how it works")}
           </button>
           <div className="made-for">
             <span />
-            Built for local opportunities
+            {t("Built for local opportunities")}
           </div>
         </div>
       </aside>
@@ -588,29 +506,27 @@ export default function JobSathi() {
           <div className="mobile-brand">
             <Handshake size={22} /> JobSathi
           </div>
-          <div className="workspace-switch" aria-label="Choose workspace">
+          <div className="workspace-switch" aria-label={t("Choose workspace")}>
             <button
               className={workspace === "candidate" ? "selected" : ""}
               onClick={() => switchWorkspace("candidate")}
             >
-              For jobseekers
+              {t("For jobseekers")}
             </button>
             <button
               className={workspace === "employer" ? "selected" : ""}
               onClick={() => switchWorkspace("employer")}
             >
-              For employers <ArrowUpRight size={13} />
+              {t("For employers")} <ArrowUpRight size={13} />
             </button>
           </div>
           <div className="topbar-right">
-            <span className="language-chip">
-              <Globe2 size={15} /> EN <span>/</span> മലയാളം
-            </span>
+            <LanguageSwitcher />
             {data?.user ? (
               <>
                 <button
                   className="avatar"
-                  aria-label="Open your profile"
+                  aria-label={t("Open your profile")}
                   onClick={() =>
                     workspace === "candidate"
                       ? navigate("profile")
@@ -624,7 +540,7 @@ export default function JobSathi() {
                   onClick={() => void signOut()}
                   disabled={busy === "auth"}
                 >
-                  Sign out
+                  {t("Sign out")}
                 </button>
               </>
             ) : (
@@ -633,30 +549,74 @@ export default function JobSathi() {
                 disabled={busy === "auth"}
                 onClick={() => void signIn()}
               >
-                Sign in <ArrowRight size={14} />
+                {t("Sign in")} <ArrowRight size={14} />
               </button>
             )}
           </div>
         </header>
-        <nav className="mobile-nav" aria-label="Mobile navigation">
+        <nav className="mobile-nav" aria-label={t("Mobile navigation")}>
           <button
+            className={
+              (
+                workspace === "candidate"
+                  ? view === "discover"
+                  : view === "overview"
+              )
+                ? "active"
+                : ""
+            }
+            aria-current={
+              (
+                workspace === "candidate"
+                  ? view === "discover"
+                  : view === "overview"
+              )
+                ? "page"
+                : undefined
+            }
             onClick={() =>
               navigate(workspace === "candidate" ? "discover" : "overview")
             }
           >
             <Search size={16} />{" "}
-            {workspace === "candidate" ? "Find jobs" : "Vacancies"}
+            {workspace === "candidate" ? t("Find jobs") : t("Vacancies")}
           </button>
           <button
+            className={
+              (
+                workspace === "candidate"
+                  ? view === "applications"
+                  : view === "applicants"
+              )
+                ? "active"
+                : ""
+            }
+            aria-current={
+              (
+                workspace === "candidate"
+                  ? view === "applications"
+                  : view === "applicants"
+              )
+                ? "page"
+                : undefined
+            }
             onClick={() =>
               navigate(
                 workspace === "candidate" ? "applications" : "applicants",
               )
             }
           >
-            <FileCheck2 size={16} /> Applications
+            <FileCheck2 size={16} /> {t("Applications")}
           </button>
           <button
+            className={
+              workspace === "candidate" && view === "profile" ? "active" : ""
+            }
+            aria-current={
+              workspace === "candidate" && view === "profile"
+                ? "page"
+                : undefined
+            }
             onClick={() =>
               workspace === "candidate"
                 ? navigate("profile")
@@ -664,20 +624,20 @@ export default function JobSathi() {
             }
           >
             <UserRound size={16} />
-            {workspace === "candidate" ? "Profile" : "Post a job"}
+            {workspace === "candidate" ? t("My resume") : t("Post a job")}
           </button>
         </nav>
         <main className="main-content">
           {error && (
             <div className="alert error" role="alert">
-              {error}
-              <button onClick={() => void load()}>Retry</button>
+              {t(error)}
+              <button onClick={() => void load()}>{t("Retry")}</button>
             </div>
           )}
           {loading ? (
             <div className="loading-state">
               <Loader2 className="spin" />
-              <h2>Finding your starting point…</h2>
+              <h2>{t("Finding your starting point…")}</h2>
             </div>
           ) : (
             <>
@@ -685,19 +645,34 @@ export default function JobSathi() {
                 <>
                   <div className="page-eyebrow">
                     <span />
-                    YOUR NEXT CHAPTER STARTS HERE
+                    {t("YOUR NEXT CHAPTER STARTS HERE")}
                   </div>
                   <section className="hero">
                     <div className="hero-copy">
                       <h1>
-                        Your experience.
-                        <br />
-                        Your next <em>opportunity.</em>
+                        {locale === "en" ? (
+                          <>
+                            Your experience.
+                            <br />
+                            Your next <em>opportunity.</em>
+                          </>
+                        ) : (
+                          t("Your experience. Your next opportunity.")
+                        )}
                       </h1>
                       <p>
-                        You bring the skills. We help you put them into words
-                        <br className="desktop-break" /> and find work that
-                        fits.
+                        {locale === "en" ? (
+                          <>
+                            You bring the skills. We help you put them into
+                            words
+                            <br className="desktop-break" /> and find work that
+                            fits.
+                          </>
+                        ) : (
+                          t(
+                            "You bring the skills. We help you put them into words and find work that fits.",
+                          )
+                        )}
                       </p>
                       <div className="hero-footnote">
                         <span className="tiny-avatars">
@@ -706,8 +681,9 @@ export default function JobSathi() {
                           <i>J</i>
                         </span>
                         <span>
-                          For first jobs, fresh starts, and everything in
-                          between.
+                          {t(
+                            "For first jobs, fresh starts, and everything in between.",
+                          )}
                         </span>
                       </div>
                     </div>
@@ -720,8 +696,8 @@ export default function JobSathi() {
                           <Mic />
                         </span>
                         <div>
-                          <b>Your story, in your words</b>
-                          <small>മലയാളത്തിൽ തുടങ്ങാം</small>
+                          <b>{t("Your story, in your words")}</b>
+                          <small>{t("Start in your language")}</small>
                         </div>
                         <span className="wave">▂▅▃▇▅▂▆▃</span>
                       </div>
@@ -730,8 +706,8 @@ export default function JobSathi() {
                           <BriefcaseBusiness />
                         </span>
                         <div>
-                          <b>A place for your potential</b>
-                          <small>Local work. Real possibilities.</small>
+                          <b>{t("A place for your potential")}</b>
+                          <small>{t("Local work. Real possibilities.")}</small>
                         </div>
                         <span className="card-check">
                           <Check size={15} />
@@ -745,8 +721,10 @@ export default function JobSathi() {
                     <label className="search-input">
                       <Search size={20} />
                       <input
-                        aria-label="Job title, skill or keyword"
-                        placeholder="Job title, skill, or something you're good at"
+                        aria-label={t("Job title, skill or keyword")}
+                        placeholder={t(
+                          "Job title, skill, or something you're good at",
+                        )}
                         value={query}
                         onChange={(e) => {
                           setQuery(e.target.value);
@@ -757,14 +735,14 @@ export default function JobSathi() {
                     <label className="location-input">
                       <MapPin size={18} />
                       <select
-                        aria-label="Location"
+                        aria-label={t("Location")}
                         value={location}
                         onChange={(e) => {
                           setLocation(e.target.value);
                           invalidateSearch();
                         }}
                       >
-                        <option value="">All locations</option>
+                        <option value="">{t("All locations")}</option>
                         {Array.from(
                           new Set(data?.jobs.map((j) => j.location)),
                         ).map((l) => (
@@ -780,23 +758,35 @@ export default function JobSathi() {
                         <Loader2 className="spin" size={16} />
                       ) : (
                         <>
-                          Find opportunities <ArrowRight size={16} />
+                          {t("Find opportunities")} <ArrowRight size={16} />
                         </>
                       )}
                     </button>
                   </form>
+
+                  {searchAnswer?.locale === locale && (
+                    <RagSearchAnswer
+                      answer={searchAnswer.answer}
+                      onViewJob={showJob}
+                    />
+                  )}
 
                   <div className="discovery-grid">
                     <section className="results">
                       <div className="section-heading">
                         <div>
                           <h2>
-                            Find your next step <span>{listed.length}</span>
+                            {t("Find your next step")}{" "}
+                            <span>{listed.length}</span>
                           </h2>
                           <p>
                             {searchMode === "semantic"
-                              ? "Ordered by related experience. You decide what fits."
-                              : "Explore roles, read the details, and make your move."}
+                              ? t(
+                                  "Ordered by related experience. You decide what fits.",
+                                )
+                              : t(
+                                  "Explore roles, read the details, and make your move.",
+                                )}
                           </p>
                         </div>
                         <button
@@ -809,7 +799,7 @@ export default function JobSathi() {
                             invalidateSearch();
                           }}
                         >
-                          Reset filters
+                          {t("Reset filters")}
                         </button>
                       </div>
                       <div className="filter-row">
@@ -821,7 +811,7 @@ export default function JobSathi() {
                               invalidateSearch();
                             }}
                           >
-                            All opportunities
+                            {t("All opportunities")}
                           </button>
                           {[
                             "Retail",
@@ -839,24 +829,24 @@ export default function JobSathi() {
                                 invalidateSearch();
                               }}
                             >
-                              {c}
+                              {t(c)}
                             </button>
                           ))}
                         </div>
                         <label className="type-filter">
                           <SlidersHorizontal size={14} />
                           <select
-                            aria-label="Employment type"
+                            aria-label={t("Employment type")}
                             value={type}
                             onChange={(e) => {
                               setType(e.target.value);
                               invalidateSearch();
                             }}
                           >
-                            <option value="">Job type</option>
-                            <option>Full-time</option>
-                            <option>Part-time</option>
-                            <option>Contract</option>
+                            <option value="">{t("Job type")}</option>
+                            <option value="Full-time">{t("Full-time")}</option>
+                            <option value="Part-time">{t("Part-time")}</option>
+                            <option value="Contract">{t("Contract")}</option>
                           </select>
                         </label>
                       </div>
@@ -870,11 +860,13 @@ export default function JobSathi() {
                               invalidateSearch();
                             }}
                           />{" "}
-                          Include sample vacancies
+                          {t("Include sample vacancies")}
                         </label>
                         <span>
-                          {notice ||
-                            "Sample vacancies illustrate the experience and cannot receive applications."}
+                          {(notice ? t(notice) : "") ||
+                            t(
+                              "Sample vacancies illustrate the experience and cannot receive applications.",
+                            )}
                         </span>
                       </div>
                       <div className="job-list">
@@ -892,7 +884,7 @@ export default function JobSathi() {
                                     {job.company}
                                     {job.sample && (
                                       <span className="sample-label">
-                                        SAMPLE
+                                        {t("SAMPLE")}
                                       </span>
                                     )}
                                   </div>
@@ -906,13 +898,13 @@ export default function JobSathi() {
                                     </span>
                                     <span>
                                       <Clock3 />
-                                      {job.type}
+                                      {t(job.type)}
                                     </span>
                                   </div>
                                 </div>
                                 <button
                                   className="job-arrow"
-                                  aria-label={`View ${job.title}`}
+                                  aria-label={`${t("View opportunity")}: ${job.title}`}
                                   onClick={() => showJob(job)}
                                 >
                                   <ArrowUpRight />
@@ -923,15 +915,15 @@ export default function JobSathi() {
                               </p>
                               <div className="job-card-bottom">
                                 <div className="tags">
-                                  <span>{job.category}</span>
-                                  <span>{job.shift}</span>
+                                  <span>{t(job.category)}</span>
+                                  <span>{t(job.shift)}</span>
                                 </div>
                                 <div className="pay">
-                                  {salary(job)}
+                                  {salary(job, t, locale)}
                                   <small>
                                     {job.salaryMin !== null ||
                                     job.salaryMax !== null
-                                      ? "/ month"
+                                      ? t("/ month")
                                       : ""}
                                   </small>
                                 </div>
@@ -939,13 +931,17 @@ export default function JobSathi() {
                               <div className="job-card-footer">
                                 <span>
                                   {job.sample
-                                    ? "Illustrative listing · not a live opening"
-                                    : "Employer posted · not independently verified"}
+                                    ? t(
+                                        "Illustrative listing · not a live opening",
+                                      )
+                                    : t(
+                                        "Employer posted · not independently verified",
+                                      )}
                                 </span>
                                 <button onClick={() => showJob(job)}>
                                   {appliedIds.has(job.id)
-                                    ? "Applied"
-                                    : "View opportunity"}
+                                    ? t("Applied")
+                                    : t("View opportunity")}
                                   <ChevronRight size={13} />
                                 </button>
                               </div>
@@ -954,11 +950,11 @@ export default function JobSathi() {
                         ) : (
                           <div className="empty-state">
                             <Search />
-                            <h3>No opportunities found</h3>
+                            <h3>{t("No opportunities found")}</h3>
                             <p>
-                              Try a broader keyword or location. You can also
-                              include sample vacancies to explore the
-                              experience.
+                              {t(
+                                "Try a broader keyword or location. You can also include sample vacancies to explore the experience.",
+                              )}
                             </p>
                           </div>
                         )}
@@ -968,29 +964,30 @@ export default function JobSathi() {
                       <section className="voice-card">
                         <div className="small-label">
                           <span />
-                          LET’S START WITH YOU
+                          {t("LET’S START WITH YOU")}
                         </div>
                         <div className="voice-orb">
                           <Mic size={28} />
                           <span />
                         </div>
                         <h2>
-                          You have a story.
+                          {t("You have a story.")}
                           <br />
-                          Let’s hear it.
+                          {t("Let’s hear it.")}
                         </h2>
                         <p>
-                          Shop experience? Helping at home? Tell us what you do.
-                          Your everyday skills count.
+                          {t(
+                            "Shop experience? Helping at home? Tell us what you do. Your everyday skills count.",
+                          )}
                         </p>
                         <button
                           className="button primary"
                           onClick={openProfile}
                         >
-                          Build my profile <ArrowRight size={16} />
+                          {t("Build my resume")} <ArrowRight size={16} />
                         </button>
                         <div className="voice-caption">
-                          മലയാളത്തിൽ പറയാം. You can type, too.
+                          {t("Speak or type in your language.")}
                         </div>
                       </section>
                       <section className="profile-card">
@@ -1001,13 +998,13 @@ export default function JobSathi() {
                           <div>
                             <h3>
                               {profile
-                                ? "Your profile is ready"
-                                : "Make your potential visible"}
+                                ? t("Your profile is ready")
+                                : t("Make your potential visible")}
                             </h3>
                             <small>
                               {profile
-                                ? "Candidate-confirmed · self-reported"
-                                : "A few details make a difference"}
+                                ? t("Candidate-confirmed · self-reported")
+                                : t("A few details make a difference")}
                             </small>
                           </div>
                         </div>
@@ -1020,21 +1017,26 @@ export default function JobSathi() {
                         </div>
                         <p>
                           {profile
-                            ? `${completed} of 7 profile fields completed.`
-                            : "Start with your experience. A formal résumé isn’t required."}
+                            ? `${completed} / 7 ${t("profile fields completed")}`
+                            : t(
+                                "Start with your experience. A formal résumé isn’t required.",
+                              )}
                         </p>
                         <button className="text-button" onClick={openProfile}>
-                          {profile ? "Review my profile" : "Create my profile"}
+                          {profile
+                            ? t("Review my resume")
+                            : t("Create my resume")}
                           <ArrowRight size={14} />
                         </button>
                       </section>
                       <section className="trust-note">
                         <ShieldCheck size={23} />
                         <div>
-                          <h3>Your words. Your control.</h3>
+                          <h3>{t("Your words. Your control.")}</h3>
                           <p>
-                            You review your profile before it’s saved, and
-                            choose when to share it with an employer.
+                            {t(
+                              "You review your profile before it’s saved, and choose when to share it with an employer.",
+                            )}
                           </p>
                         </div>
                       </section>
@@ -1047,17 +1049,19 @@ export default function JobSathi() {
                 <>
                   <div className="page-eyebrow">
                     <span />
-                    YOUR EXPERIENCE MATTERS
+                    {t("YOUR EXPERIENCE MATTERS")}
                   </div>
                   <div className="page-title">
                     <div>
-                      <h1>Your profile</h1>
+                      <h1>{t("Your profile")}</h1>
                       <p>
-                        A clear picture of what you know and the work you want.
+                        {t(
+                          "A clear picture of what you know and the work you want.",
+                        )}
                       </p>
                     </div>
                     <button className="button primary" onClick={openProfile}>
-                      {profile ? "Edit profile" : "Create profile"}
+                      {profile ? t("Edit profile") : t("Create profile")}
                       <ArrowRight size={16} />
                     </button>
                   </div>
@@ -1071,43 +1075,45 @@ export default function JobSathi() {
                         {profile.targetRole} · {profile.location}
                       </p>
                       <span className="status-chip">
-                        Candidate-confirmed · self-reported
+                        {t("Candidate-confirmed · self-reported")}
                       </span>
                       <div className="profile-sections">
                         <section>
-                          <h3>Experience, in your words</h3>
+                          <h3>{t("Experience, in your words")}</h3>
                           <p className="preserve-lines">{profile.experience}</p>
                         </section>
                         <section>
-                          <h3>Skills you reported</h3>
-                          <p>{profile.skills || "Not provided"}</p>
+                          <h3>{t("Skills you reported")}</h3>
+                          <p>{profile.skills || t("Not provided")}</p>
                         </section>
                         <section>
-                          <h3>Availability</h3>
-                          <p>{profile.availability || "Not provided"}</p>
+                          <h3>{t("Availability")}</h3>
+                          <p>{profile.availability || t("Not provided")}</p>
                         </section>
                         <section>
-                          <h3>Preferred language</h3>
-                          <p>{profile.language}</p>
+                          <h3>{t("Preferred language")}</h3>
+                          <p>{t(profile.language)}</p>
                         </section>
                       </div>
                       <div className="info-note">
                         <ShieldCheck size={18} />
-                        Your profile is private. Applying shares a snapshot with
-                        the owner of that vacancy.
+                        {t(
+                          "Your profile is private. Applying shares a snapshot with the owner of that vacancy.",
+                        )}
                       </div>
                       <ResumeDownload />
                     </section>
                   ) : (
                     <div className="empty-state large">
                       <UserRound />
-                      <h2>Your next opportunity starts with you.</h2>
+                      <h2>{t("Your next opportunity starts with you.")}</h2>
                       <p>
-                        Describe what you have done, including informal work.
-                        Review everything before saving.
+                        {t(
+                          "Describe what you have done, including informal work. Review everything before saving.",
+                        )}
                       </p>
                       <button className="button primary" onClick={openProfile}>
-                        Build my profile
+                        {t("Build my resume")}
                         <ArrowRight size={16} />
                       </button>
                     </div>
@@ -1119,17 +1125,19 @@ export default function JobSathi() {
                 <>
                   <div className="page-eyebrow">
                     <span />
-                    ONE STEP CLOSER
+                    {t("ONE STEP CLOSER")}
                   </div>
                   <div className="page-title">
                     <div>
-                      <h1>My applications</h1>
+                      <h1>{t("My applications")}</h1>
                       <p>
-                        Your submitted profile, your progress, your next step.
+                        {t(
+                          "Your submitted profile, your progress, your next step.",
+                        )}
                       </p>
                     </div>
                     <span className="count-badge">
-                      {data?.applications.length || 0} applications
+                      {data?.applications.length || 0} {t("applications")}
                     </span>
                   </div>
                   {data?.applications.length ? (
@@ -1144,32 +1152,33 @@ export default function JobSathi() {
                           </span>
                           <div className="application-content">
                             <small>{a.job?.company}</small>
-                            <h3>{a.job?.title || "Vacancy unavailable"}</h3>
+                            <h3>{a.job?.title || t("Vacancy unavailable")}</h3>
                             <p>
-                              {a.job?.location} · Applied{" "}
+                              {a.job?.location} {t("· Applied")}{" "}
                               {new Date(a.createdAt).toLocaleDateString(
-                                "en-IN",
+                                `${locale}-IN`,
                                 { day: "numeric", month: "short" },
                               )}
                             </p>
                             <details>
                               <summary>
-                                View the profile snapshot you submitted
+                                {t("View the profile snapshot you submitted")}
                               </summary>
                               <p>{a.snapshot.experience}</p>
                               <p>
-                                <b>Skills:</b>{" "}
-                                {a.snapshot.skills || "Not provided"}
+                                <b>{t("Skills:")}</b>{" "}
+                                {a.snapshot.skills || t("Not provided")}
                               </p>
                               <small>
-                                Subsequent profile edits do not change this
-                                application.
+                                {t(
+                                  "Subsequent profile edits do not change this application.",
+                                )}
                               </small>
                             </details>
                           </div>
                           <div className="application-actions">
-                            <span className={`status-chip ${a.status}`}>
-                              {a.status}
+                            <span className={`status-chip ${t(a.status)}`}>
+                              {t(a.status)}
                             </span>
                             {a.status !== "withdrawn" && (
                               <button
@@ -1179,7 +1188,7 @@ export default function JobSathi() {
                                   void updateApplication(a.id, "withdrawn")
                                 }
                               >
-                                Withdraw
+                                {t("Withdraw")}
                               </button>
                             )}
                           </div>
@@ -1189,16 +1198,17 @@ export default function JobSathi() {
                   ) : (
                     <div className="empty-state large">
                       <FileCheck2 />
-                      <h2>Your first application starts here.</h2>
+                      <h2>{t("Your first application starts here.")}</h2>
                       <p>
-                        Find an opportunity, review the details, and share your
-                        confirmed profile.
+                        {t(
+                          "Find an opportunity, review the details, and share your confirmed profile.",
+                        )}
                       </p>
                       <button
                         className="button primary"
                         onClick={() => navigate("discover")}
                       >
-                        Explore opportunities
+                        {t("Explore opportunities")}
                         <ArrowRight size={16} />
                       </button>
                     </div>
@@ -1210,14 +1220,15 @@ export default function JobSathi() {
                 <>
                   <div className="page-eyebrow">
                     <span />
-                    GOOD PEOPLE. LOCAL POTENTIAL.
+                    {t("GOOD PEOPLE. LOCAL POTENTIAL.")}
                   </div>
                   <div className="page-title">
                     <div>
-                      <h1>Find your next teammate.</h1>
+                      <h1>{t("Find your next teammate.")}</h1>
                       <p>
-                        Share the work. Discover the experience behind every
-                        application.
+                        {t(
+                          "Share the work. Discover the experience behind every application.",
+                        )}
                       </p>
                     </div>
                     <button
@@ -1228,7 +1239,7 @@ export default function JobSathi() {
                       }}
                     >
                       <Plus size={17} />
-                      Post a vacancy
+                      {t("Post a vacancy")}
                     </button>
                   </div>
                   <div className="stats-grid">
@@ -1238,7 +1249,7 @@ export default function JobSathi() {
                         {data?.myJobs.filter((j) => j.status === "active")
                           .length || 0}
                       </strong>
-                      <span>Open vacancies</span>
+                      <span>{t("Open vacancies")}</span>
                     </div>
                     <div className="stat-card">
                       <Users />
@@ -1247,7 +1258,7 @@ export default function JobSathi() {
                           (a) => a.status !== "withdrawn",
                         ).length || 0}
                       </strong>
-                      <span>Applications received</span>
+                      <span>{t("Applications received")}</span>
                     </div>
                     <div className="stat-card">
                       <CheckCheck />
@@ -1256,15 +1267,16 @@ export default function JobSathi() {
                           (a) => a.status === "shortlisted",
                         ).length || 0}
                       </strong>
-                      <span>Manually shortlisted</span>
+                      <span>{t("Manually shortlisted")}</span>
                     </div>
                   </div>
                   <div className="section-heading">
                     <div>
-                      <h2>Your vacancies</h2>
+                      <h2>{t("Your vacancies")}</h2>
                       <p>
-                        Only you can manage these postings and their
-                        applications.
+                        {t(
+                          "Only you can manage these postings and their applications.",
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1277,10 +1289,11 @@ export default function JobSathi() {
                             <h3>{j.title}</h3>
                             <p>
                               <MapPin size={14} />
-                              {j.location} · {salary(j)} · {j.type}
+                              {j.location} · {salary(j, t, locale)} ·{" "}
+                              {t(j.type)}
                             </p>
-                            <span className={`status-chip ${j.status}`}>
-                              {j.status}
+                            <span className={`status-chip ${t(j.status)}`}>
+                              {t(j.status)}
                             </span>
                           </div>
                           <div className="employer-job-actions">
@@ -1288,7 +1301,7 @@ export default function JobSathi() {
                               className="button secondary"
                               onClick={() => navigate("applicants")}
                             >
-                              View applications
+                              {t("View applications")}
                               <ArrowRight size={15} />
                             </button>
                             <button
@@ -1297,10 +1310,10 @@ export default function JobSathi() {
                               onClick={() => void toggleJob(j)}
                             >
                               {busy === j.id
-                                ? "Updating…"
+                                ? t("Updating…")
                                 : j.status === "active"
-                                  ? "Close vacancy"
-                                  : "Reopen vacancy"}
+                                  ? t("Close vacancy")
+                                  : t("Reopen vacancy")}
                             </button>
                           </div>
                         </article>
@@ -1309,24 +1322,28 @@ export default function JobSathi() {
                   ) : (
                     <div className="empty-state large">
                       <Building2 />
-                      <h2>Great hiring starts with a clear opportunity.</h2>
+                      <h2>
+                        {t("Great hiring starts with a clear opportunity.")}
+                      </h2>
                       <p>
-                        Describe responsibilities, pay and requirements. Your
-                        posting will appear in job discovery.
+                        {t(
+                          "Describe responsibilities, pay and requirements. Your posting will appear in job discovery.",
+                        )}
                       </p>
                       <button
                         className="button primary"
                         onClick={() => setPostOpen(true)}
                       >
                         <Plus size={16} />
-                        Post your first vacancy
+                        {t("Post your first vacancy")}
                       </button>
                     </div>
                   )}
                   <div className="info-note">
                     <ShieldCheck size={18} />
-                    Posting requires sign-in. A signed-in account is not
-                    independent business verification.
+                    {t(
+                      "Posting requires sign-in. A signed-in account is not independent business verification.",
+                    )}
                   </div>
                 </>
               )}
@@ -1335,14 +1352,15 @@ export default function JobSathi() {
                 <>
                   <div className="page-eyebrow">
                     <span />
-                    SEE THE PERSON BEHIND THE PROFILE
+                    {t("SEE THE PERSON BEHIND THE PROFILE")}
                   </div>
                   <div className="page-title">
                     <div>
-                      <h1>Your applicants</h1>
+                      <h1>{t("Your applicants")}</h1>
                       <p>
-                        Review their words. Ask useful questions. You make the
-                        decision.
+                        {t(
+                          "Review their words. Ask useful questions. You make the decision.",
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1363,8 +1381,8 @@ export default function JobSathi() {
                               {a.snapshot.location} · {a.snapshot.targetRole}
                             </p>
                           </div>
-                          <span className={`status-chip ${a.status}`}>
-                            {a.status}
+                          <span className={`status-chip ${t(a.status)}`}>
+                            {t(a.status)}
                           </span>
                           <button
                             className="button secondary"
@@ -1374,7 +1392,7 @@ export default function JobSathi() {
                               setDetailError("");
                             }}
                           >
-                            Review
+                            {t("Review")}
                             <ArrowRight size={15} />
                           </button>
                         </article>
@@ -1383,11 +1401,11 @@ export default function JobSathi() {
                   ) : (
                     <div className="empty-state large">
                       <Users />
-                      <h2>A place for your future team.</h2>
+                      <h2>{t("A place for your future team.")}</h2>
                       <p>
-                        Applications to your vacancies will appear here. You
-                        will only see profiles deliberately submitted to your
-                        postings.
+                        {t(
+                          "Applications to your vacancies will appear here. You will only see profiles deliberately submitted to your postings.",
+                        )}
                       </p>
                     </div>
                   )}
@@ -1396,10 +1414,10 @@ export default function JobSathi() {
 
               <footer className="page-footer">
                 <span>
-                  JobSathi <i>✳</i> Every experience deserves a chance.
+                  JobSathi <i>✳</i> {t("Every experience deserves a chance.")}
                 </span>
                 <button onClick={() => setHelpOpen(true)}>
-                  How it works
+                  {t("How it works")}
                   <ArrowUpRight size={13} />
                 </button>
               </footer>
@@ -1409,233 +1427,23 @@ export default function JobSathi() {
       </div>
 
       {profileOpen && (
-        <Dialog
-          title={
-            profile
-              ? "Review your profile"
-              : "Let’s put your experience into words"
-          }
-          wide
-          onClose={() => {
-            stopRecording();
+        <ResumeWizard
+          profile={data?.profile || null}
+          speechEnabled={Boolean(data?.ai.speech)}
+          aiEnabled={Boolean(data?.ai.generation)}
+          onClose={() => setProfileOpen(false)}
+          onSaved={async () => {
+            await load();
             setProfileOpen(false);
+            invalidateSearch();
+            setToast({ source: "Your confirmed profile is saved." });
           }}
-        >
-          <form onSubmit={saveProfile}>
-            <p className="dialog-intro">
-              Formal work, family work, volunteering—it all starts with what you
-              actually did.
-            </p>
-            <div className="form-grid">
-              <Field label="Your name">
-                <input
-                  required
-                  minLength={2}
-                  maxLength={100}
-                  value={draft.name}
-                  onChange={(e) => setProfileField("name", e.target.value)}
-                  placeholder="How should employers know you?"
-                />
-              </Field>
-              <Field label="Your location">
-                <input
-                  required
-                  minLength={2}
-                  maxLength={100}
-                  value={draft.location}
-                  onChange={(e) => setProfileField("location", e.target.value)}
-                  placeholder="Town or city"
-                />
-              </Field>
-              <Field label="What work are you looking for?">
-                <input
-                  required
-                  minLength={2}
-                  maxLength={120}
-                  value={draft.targetRole}
-                  onChange={(e) =>
-                    setProfileField("targetRole", e.target.value)
-                  }
-                  placeholder="For example, retail assistant"
-                />
-              </Field>
-              <Field label="Interview language">
-                <select
-                  value={draft.language}
-                  onChange={(e) => setProfileField("language", e.target.value)}
-                >
-                  <option>Malayalam</option>
-                  <option>English</option>
-                </select>
-              </Field>
-            </div>
-            <div className="experience-label">
-              <label htmlFor="experience">
-                Tell us about work you have done
-              </label>
-              <button
-                type="button"
-                className={`record-button ${recording ? "recording" : ""}`}
-                onClick={() => void record()}
-                disabled={Boolean(busy)}
-              >
-                {recording ? <Square size={14} /> : <Mic size={14} />}{" "}
-                {recording ? "Stop recording" : "Record an answer"}
-              </button>
-            </div>
-            <textarea
-              id="experience"
-              required
-              minLength={10}
-              maxLength={6000}
-              rows={5}
-              value={draft.experience}
-              onChange={(e) => setProfileField("experience", e.target.value)}
-              placeholder="What did you do? Where? For how long? Which tasks or tools did you use? You can type in Malayalam or English."
-            />
-            <p className="field-help">
-              Share responsibilities, training and education relevant to work.
-              Recording stops after 45 seconds. Review names, dates and numbers
-              carefully.
-            </p>
-            <div className="ai-action-row">
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => void extract()}
-                disabled={Boolean(busy) || draft.experience.length < 10}
-              >
-                <Sparkles size={15} />
-                {busy === "extract"
-                  ? "Looking for supporting details…"
-                  : "Suggest skills & follow-up questions"}
-              </button>
-              <span>
-                {data?.ai.generation
-                  ? "AI connected"
-                  : "AI not connected · manual editing available"}
-              </span>
-            </div>
-            {suggestions && (
-              <div className="suggestion-panel">
-                <h3>Review the supporting evidence</h3>
-                {suggestions.skills.map((s, i) => (
-                  <div className="suggestion" key={i}>
-                    <div>
-                      <b>{s.text}</b>
-                      <blockquote>“{s.quote}”</blockquote>
-                    </div>
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() =>
-                        setProfileField(
-                          "skills",
-                          draft.skills ? `${draft.skills}, ${s.text}` : s.text,
-                        )
-                      }
-                    >
-                      <Plus size={14} />
-                      Add
-                    </button>
-                  </div>
-                ))}
-                {suggestions.questions.length > 0 && (
-                  <>
-                    <h3>Useful things to clarify</h3>
-                    {suggestions.questions.map((q) => (
-                      <p key={q}>• {q}</p>
-                    ))}
-                    <small>
-                      Add your answers to the experience box above, then review
-                      again.
-                    </small>
-                  </>
-                )}
-              </div>
-            )}
-            <Field
-              label="Skills you want to include"
-              hint="Only include skills you can honestly describe. These remain self-reported."
-            >
-              <input
-                maxLength={2000}
-                value={draft.skills}
-                onChange={(e) => setProfileField("skills", e.target.value)}
-                placeholder="For example: arranging products, collecting payments"
-              />
-            </Field>
-            <Field
-              label="Availability and preferences"
-              hint="Leave unknown details blank."
-            >
-              <input
-                maxLength={500}
-                value={draft.availability}
-                onChange={(e) =>
-                  setProfileField("availability", e.target.value)
-                }
-                placeholder="For example: day shifts, available from November"
-              />
-            </Field>
-            <label className="consent-box">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(e) => setConfirmed(e.target.checked)}
-              />
-              <span>
-                I reviewed this profile and confirm it reflects my own
-                experience. It will remain private until I apply.
-              </span>
-            </label>
-            {profileError && (
-              <div className="alert error" role="alert">
-                {profileError}
-              </div>
-            )}
-            {!data?.user && (
-              <div className="info-note">
-                Sign in before saving.{" "}
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => void signIn()}
-                >
-                  Sign in
-                </button>
-              </div>
-            )}
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => {
-                  stopRecording();
-                  setProfileOpen(false);
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="button primary"
-                disabled={!confirmed || Boolean(busy) || recording}
-              >
-                {busy === "profile" ? (
-                  <Loader2 size={16} className="spin" />
-                ) : (
-                  <Check size={16} />
-                )}
-                Save confirmed profile
-              </button>
-            </div>
-          </form>
-        </Dialog>
+        />
       )}
 
       {selected && (
         <Dialog
-          title="An opportunity worth exploring"
+          title={t("An opportunity worth exploring")}
           wide
           onClose={() => setSelected(null)}
         >
@@ -1647,57 +1455,58 @@ export default function JobSathi() {
               <div className="company-name">
                 {selected.company}
                 {selected.sample && (
-                  <span className="sample-label">SAMPLE</span>
+                  <span className="sample-label">{t("SAMPLE")}</span>
                 )}
               </div>
               <h2>{selected.title}</h2>
               <p>
-                {selected.location} · {selected.type}
+                {selected.location} · {t(selected.type)}
               </p>
             </div>
           </div>
           <div className="detail-facts">
             <div>
-              <small>MONTHLY PAY</small>
-              <b>{salary(selected)}</b>
+              <small>{t("MONTHLY PAY")}</small>
+              <b>{salary(selected, t, locale)}</b>
             </div>
             <div>
-              <small>SHIFT</small>
-              <b>{selected.shift}</b>
+              <small>{t("SHIFT")}</small>
+              <b>{t(selected.shift)}</b>
             </div>
             <div>
-              <small>APPLY BY</small>
-              <b>{selected.deadline || "Not specified"}</b>
+              <small>{t("APPLY BY")}</small>
+              <b>{selected.deadline || t("Not specified")}</b>
             </div>
           </div>
           <section className="detail-section">
-            <h3>The work</h3>
+            <h3>{t("The work")}</h3>
             <p>{selected.description}</p>
           </section>
           <section className="detail-section">
-            <h3>What the employer is looking for</h3>
+            <h3>{t("What the employer is looking for")}</h3>
             <p>{selected.requirements}</p>
           </section>
           <div className="rag-panel">
             <div className="rag-heading">
               <Sparkles size={19} />
-              <h3>Understand this opportunity</h3>
+              <h3>{t("Understand this opportunity")}</h3>
             </div>
             <p>
-              Compare the posting with your confirmed experience, with
-              supporting quotes.
+              {t(
+                "Compare the posting with your confirmed experience, with supporting quotes.",
+              )}
             </p>
             <div className="question-input">
               <input
-                aria-label="Question about this vacancy"
+                aria-label={t("Question about this vacancy")}
                 maxLength={1000}
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder="For example: is billing software required?"
+                placeholder={t("For example: is billing software required?")}
               />
               <button
                 className="button primary"
-                aria-label="Ask about this vacancy"
+                aria-label={t("Ask about this vacancy")}
                 disabled={Boolean(busy)}
                 onClick={() => void explain()}
               >
@@ -1710,23 +1519,30 @@ export default function JobSathi() {
             </div>
             {!data?.ai.generation && (
               <small>
-                Grounded AI explanations need a connected Gemini account. The
-                original posting remains available above.
+                {t(
+                  "Grounded AI explanations need a connected Gemini account. The original posting remains available above.",
+                )}
               </small>
             )}
-            {explanation && <Evidence result={explanation} />}
+            {explanation &&
+              explanationLocale === locale &&
+              explanation.jobId === selected.id && (
+                <Evidence result={explanation} />
+              )}
           </div>
           {selected.sample ? (
             <div className="info-note">
               <CircleHelp size={18} />
-              This is an illustrative vacancy, not a live opening. To test
-              applications, post a vacancy from the employer workspace.
+              {t(
+                "This is an illustrative vacancy, not a live opening. To test applications, post a vacancy from the employer workspace.",
+              )}
             </div>
           ) : appliedIds.has(selected.id) ? (
             <div className="info-note">
               <CheckCheck size={18} />
-              You have already applied. View your application status in My
-              applications.
+              {t(
+                "You have already applied. View your application status in My applications.",
+              )}
             </div>
           ) : (
             <>
@@ -1737,19 +1553,20 @@ export default function JobSathi() {
                   onChange={(e) => setConsent(e.target.checked)}
                 />
                 <span>
-                  I want to share my current confirmed profile with this
-                  vacancy’s owner. It is stored as an application snapshot.
+                  {t(
+                    "I want to share my current confirmed profile with this vacancy’s owner. It is stored as an application snapshot.",
+                  )}
                 </span>
               </label>
               {profile ? (
                 <p className="application-preview">
-                  <b>Sharing:</b> {profile.name} · {profile.targetRole} ·{" "}
-                  {profile.location}. Includes your experience, skills and
-                  availability.
+                  <b>{t("Sharing:")}</b> {profile.name} · {profile.targetRole} ·{" "}
+                  {profile.location}
+                  {t(". Includes your experience, skills and availability.")}
                 </p>
               ) : (
                 <p className="application-preview">
-                  Create a confirmed profile before applying.{" "}
+                  {t("Create a confirmed profile before applying.")}{" "}
                   <button
                     className="text-button"
                     onClick={() => {
@@ -1757,7 +1574,7 @@ export default function JobSathi() {
                       openProfile();
                     }}
                   >
-                    Create profile
+                    {t("Create profile")}
                     <ArrowRight size={13} />
                   </button>
                 </p>
@@ -1766,7 +1583,7 @@ export default function JobSathi() {
           )}
           {detailError && (
             <div className="alert error" role="alert">
-              {detailError}
+              {t(detailError)}
             </div>
           )}
           <div className="modal-actions">
@@ -1774,7 +1591,7 @@ export default function JobSathi() {
               className="button secondary"
               onClick={() => setSelected(null)}
             >
-              Back to opportunities
+              {t("Back to opportunities")}
             </button>
             {!selected.sample && !appliedIds.has(selected.id) && (
               <button
@@ -1786,7 +1603,7 @@ export default function JobSathi() {
                   <Loader2 className="spin" size={16} />
                 ) : (
                   <>
-                    Submit application
+                    {t("Submit application")}
                     <ArrowRight size={16} />
                   </>
                 )}
@@ -1798,14 +1615,15 @@ export default function JobSathi() {
 
       {postOpen && (
         <Dialog
-          title="Make room for someone’s next chapter"
+          title={t("Make room for someone’s next chapter")}
           wide
           onClose={() => setPostOpen(false)}
         >
           <form onSubmit={postJob}>
             <p className="dialog-intro">
-              Be clear about the work and requirements. You remain responsible
-              for the accuracy of this posting.
+              {t(
+                "Be clear about the work and requirements. You remain responsible for the accuracy of this posting.",
+              )}
             </p>
             <div className="form-grid">
               {(["title", "company", "location"] as const).map((key) => (
@@ -1813,10 +1631,10 @@ export default function JobSathi() {
                   key={key}
                   label={
                     key === "title"
-                      ? "Job title"
+                      ? t("Job title")
                       : key === "company"
-                        ? "Company or business"
-                        : "Work location"
+                        ? t("Company or business")
+                        : t("Work location")
                   }
                 >
                   <input
@@ -1830,7 +1648,7 @@ export default function JobSathi() {
                   />
                 </Field>
               ))}
-              <Field label="Category">
+              <Field label={t("Category")}>
                 <select
                   value={jobDraft.category}
                   onChange={(e) =>
@@ -1838,34 +1656,37 @@ export default function JobSathi() {
                   }
                 >
                   {CATEGORIES.map((c) => (
-                    <option key={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {t(c)}
+                    </option>
                   ))}
                 </select>
               </Field>
-              <Field label="Employment type">
+              <Field label={t("Employment type")}>
                 <select
                   value={jobDraft.type}
                   onChange={(e) =>
                     setJobDraft((j) => ({ ...j, type: e.target.value }))
                   }
                 >
-                  <option>Full-time</option>
-                  <option>Part-time</option>
-                  <option>Contract</option>
+                  <option value="Full-time">{t("Full-time")}</option>
+                  <option value="Part-time">{t("Part-time")}</option>
+                  <option value="Contract">{t("Contract")}</option>
                 </select>
               </Field>
-              <Field label="Shift">
+              <Field label={t("Shift")}>
                 <input
                   required
                   minLength={2}
                   maxLength={100}
+                  placeholder={t("For example: day shift")}
                   value={jobDraft.shift}
                   onChange={(e) =>
                     setJobDraft((j) => ({ ...j, shift: e.target.value }))
                   }
                 />
               </Field>
-              <Field label="Monthly pay minimum (₹)">
+              <Field label={t("Monthly pay minimum (₹)")}>
                 <input
                   type="number"
                   min={0}
@@ -1874,10 +1695,10 @@ export default function JobSathi() {
                   onChange={(e) =>
                     setJobDraft((j) => ({ ...j, salaryMin: e.target.value }))
                   }
-                  placeholder="Optional"
+                  placeholder={t("Optional")}
                 />
               </Field>
-              <Field label="Monthly pay maximum (₹)">
+              <Field label={t("Monthly pay maximum (₹)")}>
                 <input
                   type="number"
                   min={0}
@@ -1886,11 +1707,11 @@ export default function JobSathi() {
                   onChange={(e) =>
                     setJobDraft((j) => ({ ...j, salaryMax: e.target.value }))
                   }
-                  placeholder="Optional"
+                  placeholder={t("Optional")}
                 />
               </Field>
             </div>
-            <Field label="Responsibilities">
+            <Field label={t("Responsibilities")}>
               <textarea
                 required
                 minLength={20}
@@ -1900,12 +1721,16 @@ export default function JobSathi() {
                 onChange={(e) =>
                   setJobDraft((j) => ({ ...j, description: e.target.value }))
                 }
-                placeholder="Describe the actual tasks and support or training offered."
+                placeholder={t(
+                  "Describe the actual tasks and support or training offered.",
+                )}
               />
             </Field>
             <Field
-              label="Requirements"
-              hint="Distinguish essentials from preferences. Do not ask for irrelevant personal traits."
+              label={t("Requirements")}
+              hint={t(
+                "Distinguish essentials from preferences. Do not ask for irrelevant personal traits.",
+              )}
             >
               <textarea
                 required
@@ -1916,10 +1741,10 @@ export default function JobSathi() {
                 onChange={(e) =>
                   setJobDraft((j) => ({ ...j, requirements: e.target.value }))
                 }
-                placeholder="Required: … Preferred: …"
+                placeholder={t("Required: … Preferred: …")}
               />
             </Field>
-            <Field label="Application deadline">
+            <Field label={t("Application deadline")}>
               <input
                 type="date"
                 min={new Date().toISOString().slice(0, 10)}
@@ -1931,7 +1756,7 @@ export default function JobSathi() {
             </Field>
             {postError && (
               <div className="alert error" role="alert">
-                {postError}
+                {t(postError)}
               </div>
             )}
             <div className="modal-actions">
@@ -1940,7 +1765,7 @@ export default function JobSathi() {
                 className="button secondary"
                 onClick={() => setPostOpen(false)}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button className="button primary" disabled={Boolean(busy)}>
                 {busy === "post" ? (
@@ -1948,7 +1773,7 @@ export default function JobSathi() {
                 ) : (
                   <Plus size={16} />
                 )}
-                Publish vacancy
+                {t("Publish vacancy")}
               </button>
             </div>
           </form>
@@ -1957,7 +1782,7 @@ export default function JobSathi() {
 
       {activeApplicant && (
         <Dialog
-          title="Review application"
+          title={t("Review application")}
           wide
           onClose={() => setActiveApplicant(null)}
         >
@@ -1977,26 +1802,29 @@ export default function JobSathi() {
           <span className="status-chip">{activeApplicant.status}</span>
           <div className="profile-sections">
             <section>
-              <h3>Submitted experience</h3>
+              <h3>{t("Submitted experience")}</h3>
               <p className="preserve-lines">
                 {activeApplicant.snapshot.experience}
               </p>
             </section>
             <section>
-              <h3>Reported skills</h3>
-              <p>{activeApplicant.snapshot.skills || "Not provided"}</p>
+              <h3>{t("Reported skills")}</h3>
+              <p>{activeApplicant.snapshot.skills || t("Not provided")}</p>
             </section>
             <section>
-              <h3>Availability</h3>
-              <p>{activeApplicant.snapshot.availability || "Not provided"}</p>
+              <h3>{t("Availability")}</h3>
+              <p>
+                {activeApplicant.snapshot.availability || t("Not provided")}
+              </p>
             </section>
           </div>
           {activeApplicant.status !== "withdrawn" && (
             <div className="rag-panel">
-              <h3>Evidence summary</h3>
+              <h3>{t("Evidence summary")}</h3>
               <p>
-                Compare this submitted profile with the vacancy. AI does not
-                make the hiring decision.
+                {t(
+                  "Compare this submitted profile with the vacancy. AI does not make the hiring decision.",
+                )}
               </p>
               <button
                 className="button secondary"
@@ -2005,15 +1833,19 @@ export default function JobSathi() {
               >
                 <Sparkles size={15} />
                 {busy === "summary"
-                  ? "Retrieving evidence…"
-                  : "Summarise submitted evidence"}
+                  ? t("Retrieving evidence…")
+                  : t("Summarise submitted evidence")}
               </button>
-              {applicantSummary && <Evidence result={applicantSummary} />}
+              {applicantSummary &&
+                applicantSummaryLocale === locale &&
+                summaryApplicationId === activeApplicant.id && (
+                  <Evidence result={applicantSummary} />
+                )}
             </div>
           )}
           {detailError && (
             <div className="alert error" role="alert">
-              {detailError}
+              {t(detailError)}
             </div>
           )}
           <div className="modal-actions">
@@ -2021,7 +1853,7 @@ export default function JobSathi() {
               className="button secondary"
               onClick={() => setActiveApplicant(null)}
             >
-              Close
+              {t("Close")}
             </button>
             {activeApplicant.status !== "withdrawn" && (
               <>
@@ -2032,7 +1864,7 @@ export default function JobSathi() {
                     void updateApplication(activeApplicant.id, "contacted")
                   }
                 >
-                  Mark contacted
+                  {t("Mark contacted")}
                 </button>
                 <button
                   className="button primary"
@@ -2042,7 +1874,7 @@ export default function JobSathi() {
                   }
                 >
                   <Check size={16} />
-                  Shortlist manually
+                  {t("Shortlist manually")}
                 </button>
               </>
             )}
@@ -2052,69 +1884,73 @@ export default function JobSathi() {
 
       {helpOpen && (
         <Dialog
-          title="A clearer path from experience to opportunity"
+          title={t("A clearer path from experience to opportunity")}
           onClose={() => setHelpOpen(false)}
         >
           <div className="how-steps">
             <div>
               <span>01</span>
               <section>
-                <h3>Tell your story</h3>
+                <h3>{t("Tell your story")}</h3>
                 <p>
-                  Describe formal or informal work. Review your profile before
-                  saving.
+                  {t(
+                    "Describe formal or informal work. Review your profile before saving.",
+                  )}
                 </p>
               </section>
             </div>
             <div>
               <span>02</span>
               <section>
-                <h3>Explore and understand</h3>
+                <h3>{t("Explore and understand")}</h3>
                 <p>
-                  Read current vacancy details. When AI is connected, ask for
-                  explanations with supporting quotes. A relevant result is not
-                  a guarantee of eligibility.
+                  {t(
+                    "Read current vacancy details. When AI is connected, ask for explanations with supporting quotes. A relevant result is not a guarantee of eligibility.",
+                  )}
                 </p>
               </section>
             </div>
             <div>
               <span>03</span>
               <section>
-                <h3>Apply on your terms</h3>
+                <h3>{t("Apply on your terms")}</h3>
                 <p>
-                  Choose a vacancy and share a snapshot of your profile.
-                  Employers review applications and make their own decisions.
+                  {t(
+                    "Choose a vacancy and share a snapshot of your profile. Employers review applications and make their own decisions.",
+                  )}
                 </p>
               </section>
             </div>
           </div>
           <div className="info-note">
-            Prototype: sample listings are clearly marked. Employers and
-            candidate-reported skills are not independently verified.
+            {t(
+              "Prototype: sample listings are clearly marked. Employers and candidate-reported skills are not independently verified.",
+            )}
           </div>
           <div className="connection-status">
-            <h3>Connected services</h3>
+            <h3>{t("Connected services")}</h3>
             <p>
               <span className={data?.ai.generation ? "online" : "offline"} />
               {data?.ai.generation
-                ? "AI generation configured"
-                : "AI generation not connected"}
+                ? t("AI generation configured")
+                : t("AI generation not connected")}
             </p>
             <p>
               <span className={data?.ai.embeddings ? "online" : "offline"} />
               {data?.ai.embeddings
-                ? "Semantic retrieval configured"
-                : "Keyword retrieval available"}
+                ? t("Semantic retrieval configured")
+                : t("Keyword retrieval available")}
             </p>
             <p>
               <span className={data?.ai.speech ? "online" : "offline"} />
               {data?.ai.speech
-                ? "Voice transcription configured"
-                : "Voice transcription not connected"}
+                ? t("Voice transcription configured")
+                : t("Voice transcription not connected")}
             </p>
             <small>
-              Configured services still require a successful provider request.
-              No AI results are simulated.
+              {t(
+                "Configured services still require a successful provider request. No AI results are simulated.",
+              )}
             </small>
           </div>
         </Dialog>
@@ -2122,10 +1958,10 @@ export default function JobSathi() {
       {toast && (
         <div className="toast" role="status">
           <CheckCheck size={18} />
-          {toast}
+          {t(toast.source)} {toast.status ? t(toast.status) : ""}
           <button
-            aria-label="Dismiss notification"
-            onClick={() => setToast("")}
+            aria-label={t("Dismiss notification")}
+            onClick={() => setToast(null)}
           >
             <X size={14} />
           </button>
@@ -2136,28 +1972,33 @@ export default function JobSathi() {
 }
 
 function Evidence({ result }: { result: Explanation }) {
+  const { t } = useLanguage();
   return (
     <div className="evidence-list">
       {result.points.map((p, i) => (
         <div className="evidence-point" key={i}>
           <p>{p.text}</p>
           <details>
-            <summary>View source · {p.source}</summary>
+            <summary>
+              {t("View source ·")} {t(p.source)}
+            </summary>
             <blockquote>“{p.quote}”</blockquote>
           </details>
         </div>
       ))}
       {result.unknowns.length > 0 && (
         <div className="unknowns">
-          <h4>Still worth clarifying</h4>
+          <h4>{t("Still worth clarifying")}</h4>
           {result.unknowns.map((u, i) => (
             <p key={i}>{u}</p>
           ))}
         </div>
       )}
       <small className="evidence-caption">
-        Sources show where statements came from; they are not independent
-        verification. Vacancy version {result.jobVersion}.
+        {t(
+          "Sources show where statements came from; they are not independent verification. Vacancy version",
+        )}{" "}
+        {result.jobVersion}.
       </small>
     </div>
   );

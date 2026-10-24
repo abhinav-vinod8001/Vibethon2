@@ -1,4 +1,9 @@
-import JobSathi from "@/features/workspace/JobSathiWorkspace";
+import { WorkspaceEntry } from "@/features/language/WorkspaceEntry";
+import { BootstrapProvider } from "@/features/workspace/useBootstrap";
 export default function Home() {
-  return <JobSathi />;
+  return (
+    <BootstrapProvider>
+      <WorkspaceEntry />
+    </BootstrapProvider>
+  );
 }

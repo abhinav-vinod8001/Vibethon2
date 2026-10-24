@@ -10,12 +10,16 @@ file or persistent app disk is needed.
    named `jobsathi-staging`, select a suitable nearby region, and save its database
    password in a password manager.
 2. Open **Connect** and copy Project URL and the `sb_publishable_...` key.
-   Specific keys are also listed under **Settings → API Keys**. The app deliberately
-   rejects secret/admin and legacy keys.
+   Specific keys are also listed under **Settings → API Keys**. Core user
+   connections require the publishable key; never place a secret in that variable.
 3. Open **SQL Editor → New query**. Run
    [the initial migration](../supabase/migrations/202610250001_initial_schema.sql)
    once as administrator on the fresh project. If already applied, do not rerun.
    Table Editor should show profiles, jobs, and applications with RLS enabled.
+   For the new API translation cache and vector retrieval, apply
+   [migration 002](../supabase/migrations/202610250002_ai_services.sql) after it;
+   existing projects need only 002. Skip it if already applied.
+   See [AI activation](AI_SETUP.md).
 4. Create/edit a web OAuth client in [Google Cloud Console](https://console.cloud.google.com/).
    Configure branding/audience, basic openid/email/profile scopes, and test users
    while the consent screen is in testing. Add
@@ -44,17 +48,19 @@ Copy `.env.example` to `.env.local` for development and fill it in. Never commit
 `.env.local`. In Vercel use **Project → Settings → Environment Variables** and
 select the deployment environment. Redeploy after changing settings.
 
-| Variable | Purpose |
-| --- | --- |
-| `APP_URL` | Trusted application origin: `http://localhost:3000` locally; stable HTTPS staging domain on the host |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL from Connect |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key, paired with verified user sessions and RLS |
-| `SUPABASE_DB_URL` | Optional CLI migration connection; use Connect → Session pooler and URL-encode the database password |
-| `GEMINI_API_KEY` | Optional server-only Google AI Studio key for AI features |
-| `GEMINI_MODEL` | Exact supported text model ID; required with the Gemini key for generation |
-| `GEMINI_EMBEDDING_MODEL` | Embedding model; defaults to `gemini-embedding-001` |
-| `SARVAM_API_KEY` | Optional server-only speech transcription credential |
-| `SARVAM_MODEL` | Speech model; defaults to `saaras:v3` |
+| Variable                               | Purpose                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `APP_URL`                              | Trusted application origin: `http://localhost:3000` locally; stable HTTPS staging domain on the host                |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase Project URL from Connect                                                                                   |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key, paired with verified user sessions and RLS                                                |
+| `SUPABASE_SECRET_KEY`                  | Optional fresh server-only privileged key for public AI cache/index writes and durable work leases; never user CRUD |
+| `SUPABASE_DB_URL`                      | Optional CLI migration connection; use Connect → Session pooler and URL-encode the database password                |
+| `GEMINI_API_KEY`                       | Optional server-only Google AI Studio key for AI features                                                           |
+| `GEMINI_MODEL`                         | Exact supported text model ID; required with the Gemini key for generation                                          |
+| `GEMINI_EMBEDDING_MODEL`               | Embedding model; defaults to `gemini-embedding-001`                                                                 |
+| `SARVAM_API_KEY`                       | Optional server-only speech transcription credential                                                                |
+| `SARVAM_MODEL`                         | Speech model; defaults to `saaras:v3`                                                                               |
+| `RAG_MIN_SIMILARITY`                   | Optional cosine-retrieval threshold, default `0.25`; requires evaluation and is not eligibility                     |
 
 The Next.js server reads Supabase settings at runtime, including in standalone
 Docker. The conventional `NEXT_PUBLIC_` names identify non-secret connection
@@ -78,8 +84,10 @@ applied files are rejected. Do not run migrations during normal web requests.
 The SQL Editor method does not create this runner's migration ledger; if you
 already used the editor, skip the runner and apply later SQL changes deliberately.
 
-Never put the database password or a Supabase admin key in a `NEXT_PUBLIC_` variable.
-The web deployment does not require the migration connection or an admin key.
+Never put the database password or a Supabase secret key in a `NEXT_PUBLIC_`
+variable. Core hiring does not require the optional AI writer or migration
+connection. The privileged AI client is kept separate from user JWT/RLS clients.
+Create a fresh key for activation and revoke any previously exposed key.
 
 ## Vercel staging
 
@@ -91,6 +99,13 @@ The web deployment does not require the migration connection or an admin key.
 4. Check `/api/health`: it should return 200 with database ready. Missing config
    or a failed database query returns 503. This is not a Google/AI health check.
 5. Complete the two-account acceptance checks below before calling staging ready.
+
+For the new AI services, follow [AI setup](AI_SETUP.md) before activation: apply
+migration 002, configure the server-only writer and Gemini models, and explicitly
+run `pnpm ai:index` to backfill existing public vacancies. This is never a build
+command. Missing migration/key/provider access retains bundled UI translations
+and keyword search. New/reopened job saves attempt indexing, but an index failure
+does not undo the saved job.
 
 The package pins Node to `22.x`. Leave Vercel's Next.js output directory at its
 detected default and use `pnpm build`. The config enables standalone output only
@@ -134,6 +149,11 @@ not include environment files. Docker build/run needs its own target-host check.
   version; stale/closed/expired submissions fail. Withdrawal cannot be reversed.
 - Records survive a redeploy. Check real Gemini and Sarvam requests separately;
   configured values alone do not establish provider access or output quality.
+- Language registry/cache responses work; enabled languages preserve the original
+  grid/sign-in layout. Native speakers review generated labels and placeholders.
+- Current indexed jobs match labelled queries; assistant citations name the
+  correct job/version/field. Closed/expired/stale jobs and sample records never
+  appear as assistant evidence. Verify explicit provider/quota fallbacks too.
 
 Before importing old SQLite/D1 data, back it up and map each old identity to the
 correct Supabase UUID. Do not link accounts by an unverified email address.

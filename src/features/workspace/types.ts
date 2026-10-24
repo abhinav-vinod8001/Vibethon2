@@ -11,9 +11,27 @@ export type Bootstrap = {
   auth: { configured: boolean };
 };
 export type Explanation = {
+  jobId: string;
   points: { text: string; source: string; quote: string }[];
   unknowns: string[];
   jobVersion: number;
+};
+export type RagAnswer = {
+  mode: "rag" | "retrieval" | "keyword";
+  retrieval: "vector" | "keyword";
+  points: {
+    text: string;
+    citations: {
+      jobId: string;
+      jobVersion: number;
+      field: string;
+      quote: string;
+    }[];
+  }[];
+  unknowns: string[];
+  jobs: Job[];
+  empty: boolean;
+  notice: string;
 };
 export type Suggestion = {
   skills: { text: string; quote: string }[];

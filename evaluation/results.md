@@ -1,4 +1,63 @@
-# Verification results — Supabase integration
+# Verification results
+
+## Pre-push verification — 25 October 2026
+
+Local verification for the API translation cache, database language registry,
+durable vacancy index, and cited retrieval-and-generation search:
+
+- Full TypeScript, ESLint, and the Next.js production build passed.
+- All 17 feature tests passed: 6 matching, 2 multilingual PDF, and the 9
+  translation/grounding checks described below.
+- 9 focused translation/grounding tests passed: complete manifests, placeholder
+  preservation, cache validation, exact current-version citations, rejected
+  fabricated quotes, and valid 768-dimensional vectors.
+- 59 checks executed migration 002 in PostgreSQL with pgvector: language/cache
+  RLS, denied public index writes, version/expiry filters, invalidation, shared
+  leases and daily work budgets.
+- All 44 original PostgreSQL security/workflow checks passed as well.
+- 29 built-server AI HTTP assertions passed against the actual SQL/pgvector
+  fixture. These covered free translation GETs, persisted API translations,
+  repeated-request deduplication, persistent job indexing, generated cited
+  answers, invalid-citation fallback, ownership denial, and closed-job exclusion.
+  Gemini responses were mocked only in the test subprocess, outside app source.
+- All 96 existing built-server integration assertions passed, covering the core
+  authentication, profile, job, application and PDF flows.
+- All 96 standalone integration assertions passed against the packaged server.
+- The Vercel-mode adapter build passed, including default output and PDF font
+  tracing. Both normal and adapter builds included the new API routes.
+- A credential-pattern scan of 112 text files found no credentials to publish;
+  the populated local environment file remains ignored.
+- The earlier local browser screenshot confirmed the original green/cream
+  language grid; this final verification did not redesign the interface.
+
+No real Gemini/Sarvam calls, cloud migration or index backfill were performed by
+these checks. The user reports applying migration 002; hosted configuration and
+provider behavior were not independently verified. Real translation quality,
+multilingual retrieval relevance, hosted pgvector behavior and concurrent
+serverless usage still need staging validation. Citation checks establish source
+traceability, not semantic truth. Activation steps are in
+[AI setup](../docs/AI_SETUP.md). The observations below describe earlier checks.
+
+## Multilingual onboarding update — 25 October 2026
+
+Focused verification for the language-first entry and guided resume update:
+
+- Production build (including TypeScript) and full ESLint passed.
+- Two multilingual PDF tests passed: each of the five locale fonts and a mixed
+  five-script profile spanning pages. Representative PDF pages were rendered and
+  inspected locally for clipping and overlapping lines.
+- All 96 built-server integration assertions passed against the existing local
+  simulated Supabase/PostgREST gateway. No live AI/Google requests were made.
+- Browser preview confirmed first-visit language selection before sign-in, Tamil
+  sign-in text, preference persistence after refresh, translated navigation and
+  responsive layout. A narrow-layout overlap was corrected and checked again.
+
+The unchanged database/matching suites and second standalone/adapter builds were
+not repeated for this update. A real signed-in six-question journey, actual phone
+microphones, Google redirect persistence, native-speaker review, and provider
+output quality still need staging validation. No changes were pushed or deployed.
+
+The earlier Supabase migration verification below remains historical evidence.
 
 Updated 25 October 2026. These observations apply to the local Supabase migration
 on `codex/portable-hosting`. Hosted infrastructure and external accounts were not
@@ -6,17 +65,17 @@ provisioned by these checks.
 
 ## Automated scope
 
-| Check | Result / scope |
-| --- | --- |
-| TypeScript | Pass: source and production build type checks |
-| ESLint | Pass: source, scripts, tests, Next.js config |
-| Matching unit tests | 6 pass: filters, expiry, keyword ranking, Malayalam tokens, cosine |
-| PostgreSQL security/workflow checks | 44 pass: actual migration executed in PGlite with simulated Supabase Auth identities |
-| Built Next.js integration | 96 assertions: actual HTTP routes, local simulated Auth/PostgREST gateway, real PostgreSQL policies/RPCs |
-| Standalone integration | 96 assertions pass against the packaged server, including PDF fonts and runtime Supabase settings |
-| Production build | Pass: Next.js 16.3.4, standalone output and session-refresh proxy |
-| Vercel-mode adapter regression | Pass after fix: adapter build with VERCEL=1, default output, and traced PDF font; original config reproduced the reported ENOENT first |
-| CI and Docker | Configuration updated; remote CI and container execution not observed locally |
+| Check                               | Result / scope                                                                                                                         |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript                          | Pass: source and production build type checks                                                                                          |
+| ESLint                              | Pass: source, scripts, tests, Next.js config                                                                                           |
+| Matching unit tests                 | 6 pass: filters, expiry, keyword ranking, Malayalam tokens, cosine                                                                     |
+| PostgreSQL security/workflow checks | 44 pass: actual migration executed in PGlite with simulated Supabase Auth identities                                                   |
+| Built Next.js integration           | 96 assertions: actual HTTP routes, local simulated Auth/PostgREST gateway, real PostgreSQL policies/RPCs                               |
+| Standalone integration              | 96 assertions pass against the packaged server, including PDF fonts and runtime Supabase settings                                      |
+| Production build                    | Pass: Next.js 16.3.4, standalone output and session-refresh proxy                                                                      |
+| Vercel-mode adapter regression      | Pass after fix: adapter build with VERCEL=1, default output, and traced PDF font; original config reproduced the reported ENOENT first |
+| CI and Docker                       | Configuration updated; remote CI and container execution not observed locally                                                          |
 
 The integration suite tests PKCE sign-in URL/callback exchange, fixed return URL,
 failed login, verified user lookup, cookie metadata spoofing, token refresh,

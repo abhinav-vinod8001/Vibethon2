@@ -1,60 +1,59 @@
-# Next phases
+# Next steps
 
-The code now uses standard Next.js, Supabase PostgreSQL, and Supabase Auth with Google sign-in. The SQL migration includes RLS policies and checked write functions. Local tests simulate Supabase Auth/PostgREST over real PostgreSQL; they do not provision a host, validate Google accounts, migrate old records, or prove AI quality.
+The implementation preserves the original green/cream UI, language grid,
+compact Google sign-in and one-question resume builder. API-backed language
+configuration, cached translation bundles, persistent pgvector retrieval and a
+source-cited job assistant are implemented. Verify migration 002, server
+credentials and indexing before checking the features on the updated deployment.
+Existing login/provider setup should be retained.
 
-## Phase 1 — configure and prove a staging deployment (next)
+## Phase 1 — activate deliberately
 
-| Owner A: application and deployment | Owner B: integrations and evidence |
-| --- | --- |
-| Create Vercel staging and Supabase project; apply initial SQL once; configure APP_URL, publishable key, Google provider and redirects; verify health and two-account access | Configure Gemini generation/embeddings and Sarvam; perform real Malayalam recordings and record successful models/failures |
-| Complete employer posting, profile confirmation, application, snapshot review, manual shortlist and withdrawal | Inspect skill evidence, unrelated retrieval and missing-benefit answers; verify typing/keyword fallbacks |
-| If old data matters, back up/export SQLite/D1 and map old IDs to Supabase UUIDs explicitly | Compare counts/snapshots/ownership after staged import; do not assume old/new identity IDs match |
+Follow [AI setup](AI_SETUP.md): apply migration 002 only if not already applied,
+create a fresh server-only AI writer key, configure provider models, and explicitly
+run `pnpm ai:index` for existing vacancies. A job save remains successful if its
+indexing fails. Missing setup keeps bundled translations and keyword search
+available. Push/deployment and live database changes require a separate action.
 
-**Gate:** two actual accounts complete the hiring journey on the chosen host; database records survive redeployment; logout works; unauthorized access fails; real provider results and limitations are recorded. This is the next need, before adding product features.
+## Phase 2 — evaluate before extending
 
-## Two-person, two-hour staging sprint
+- Review all four Indic languages with native speakers, including placeholders,
+  short login labels, validation messages and mobile text wrapping.
+- Compare vector and keyword results for the same labelled questions: exact
+  matches, paraphrases, unrelated work, empty results and location/type filters.
+- Check every assistant citation against its actual job/version/field. Close a
+  vacancy during an answer and confirm the stale source disappears.
+- Test actual Gemini/Sarvam access, quota failures and phone microphone behavior;
+  configured flags and local fixtures do not establish provider quality.
+- Complete a two-account post → profile → apply → review → shortlist journey,
+  plus reload, PDF export and logout, without changing the original UI.
 
-| Elapsed | Person A | Person B | Checkpoint |
-| --- | --- | --- | --- |
-| 0–15 min | Configure Supabase project/Google provider, Vercel host and trusted app/callback URLs | Verify provider keys/model access; prepare a short Malayalam sample | Environment accessible; no secret committed |
-| 15–40 min | Apply migrations, deploy, check health and login/logout | Test real speech, extraction and embeddings separately | Actual provider outcomes recorded |
-| 40–75 min | Two-account post → confirm → apply → shortlist; verify reload and withdrawal | Review sources, unknown accommodation, unrelated query, filters and fallback | Core flow proven; defects assigned |
-| 75–100 min | Fix the highest-impact deployment/transaction issue; integrate | Five labelled queries against the same vacancies; inspect unsupported skill inference | Evidence log filled; no new feature scope |
-| 100–120 min | Final checks and rehearse three-minute journey | Retest real calls and describe exact limitations | Stable staging demo and rollback point |
+## Two-person, two-hour activation and evaluation plan
 
-If provider access blocks progress, timebox diagnosis and keep the conventional hiring flow working; do not call keyword fallback semantic AI. If staging/login is blocked after 30 minutes, both solve that shared blocker and reduce evaluation breadth. No resume/PDF or major UI refactor belongs in this two-hour sprint.
+Start this sprint only once live changes/deployment are authorized and both
+people have the necessary dashboard access.
 
-## Phase 2 — reliable profile and Malayalam onboarding
+| Elapsed     | Person A: app/database                                                  | Person B: language/AI                                                                     | Checkpoint                             |
+| ----------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------- |
+| 0–20 min    | Back up/check schema; apply migration 002 once; set fresh server key    | Confirm provider models/credits; prepare five labelled questions and short speech samples | Configuration recorded without secrets |
+| 20–40 min   | Run explicit index backfill; inspect totals; deploy the agreed revision | Open each language; generate/cache bundles; review initial labels and placeholders        | Registry/cache/index available         |
+| 40–75 min   | Two-account hiring flow, saved-profile PDF and stale-job checks         | Compare retrieved jobs/citations, no-match/filter behavior and real speech                | Failures and fallback modes recorded   |
+| 75–100 min  | Fix the highest-impact functional issue and integrate                   | Review translations and actual mobile navigation; verify retry/quota messages             | Critical path usable                   |
+| 100–120 min | Retest affected checks and rehearse the demo                            | Record relevance/translation findings and outstanding limits                              | Reviewable demo and next-issue list    |
 
-- Protect asynchronous extraction/transcription with cancellation or request IDs so old responses cannot overwrite edited/cancelled drafts.
-- Split the large workspace by candidate/employer/profile concerns; add focused hooks and feature types without changing API contracts.
-- Add a short optional guided profile path with reviewed Malayalam labels, editable answers and useful follow-up questions.
-- Define a shared language-capability table; distinguish translated UI, speech support and prompt audio.
-- Test keyboard navigation, mobile recording, denied microphone, stop/cancel, slow requests and preserved edits.
+Timebox provider diagnosis; retain the working keyword/typing flows if access is
+blocked. This is an evaluation sprint, not a promise of public-release readiness.
 
-**Gate:** the critical path is usable in Malayalam, stale requests cannot corrupt drafts, and confirmation remains explicit.
+## Phase 3 — product and operational improvements
 
-## Phase 3 — evidence and retrieval reliability
+Prioritize private resumable drafts, optional education/contact fields with
+consent, and a listen-to-question option after measuring onboarding needs. Add
+operator visibility for deferred indexing, broader abuse/rate controls, deletion
+and retention rules, backup/restore checks, and privacy-safe monitoring before a
+public release. Review multilingual retrieval on a larger labelled corpus before
+changing similarity thresholds or embedding models.
 
-- Bound embedding concurrency; index/reindex records with observable success/failure states and consistent model versions.
-- Evaluate semantic and keyword top-three results over the same reviewer-labelled corpus, including no-match and near-miss examples.
-- Improve current-vacancy versus candidate-evidence presentation; do not imply that a quoted substring establishes correctness.
-- Add provider rate/spend limits and handle timeout/quota errors without losing edits.
-
-**Gate:** measured retrieval observations, honest empty/fallback states, supported explanations and controlled provider usage.
-
-## Phase 4 — restore selected original features
-
-Confirmed-profile resume PDF export is now implemented with English/Malayalam font embedding, owner-only access, empty-section omission and multi-page layout. Validate an actual signed-in browser download on staging next. Additional templates or contact fields require explicit product decisions; do not silently expose OAuth account details. Then consider one external job source with provenance, fetched time, expiry and separate external-apply behavior. Retain clearly labelled samples; never substitute synthetic vacancies as real openings.
-
-**Gate:** PDF rendering/text extraction and authorization work; external listings are distinguishable from internal applications. No unmeasured ATS-compatibility claims.
-
-## Phase 5 — public-release readiness
-
-Implement data deletion/retention, account recovery/linking policy, backups/restores, privacy-safe logs, user-visible contact consent, abuse controls and deployment monitoring. Review OAuth provider suitability for the intended community; add another provider or email/phone onboarding only with a deliberate account-linking policy. Add database indexes/pagination when measurements justify them.
-
-**Gate:** production access/data lifecycle and restore procedures are tested, known limits are documented, and CI covers the deployed code. Business verification, messaging, pricing and growth claims remain separate product decisions.
-
-## Avoid during these phases
-
-Automatic applications/rejections, candidate ranking, additional languages without validation, a second framework migration, many simultaneous external providers and a vector-database migration without measured need. Human employers continue to decide, skills remain self-reported and the product makes no validated fairness/employment-outcome claim.
+Additional languages need verified UI wording, speech capability and PDF fonts;
+an extra database row alone is insufficient. Employers continue to make hiring
+decisions. Automatic applications/rejections and unvalidated eligibility claims
+are outside this plan.

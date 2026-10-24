@@ -1,3 +1,5 @@
+import { requestError } from "@/i18n/translate";
+
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -7,11 +9,14 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
         : { "Content-Type": "application/json" }),
       ...init?.headers,
     },
+  }).catch((error: unknown) => {
+    if (init?.signal?.aborted) throw error;
+    throw new Error("The request could not be completed. Please try again.");
   });
-  const result = (await response.json()) as T & { error?: string };
+  const result = (await response.json().catch(() => ({}))) as T & {
+    error?: string;
+  };
   if (!response.ok)
-    throw new Error(
-      result.error || "The request could not be completed. Please try again.",
-    );
+    throw new Error(requestError(result.error, response.status));
   return result;
 }

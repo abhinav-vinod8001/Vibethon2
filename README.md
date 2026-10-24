@@ -1,6 +1,6 @@
 # JobSathi
 
-A Malayalam-first hiring prototype: describe your experience, confirm a profile,
+A multilingual hiring prototype: describe your experience, confirm a profile,
 discover local jobs, and apply deliberately. Employers review the profile snapshot
 submitted with each application and decide whom to contact.
 
@@ -36,19 +36,38 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR-KEY
    `http://localhost:3000` and allow `http://localhost:3000/auth/callback`.
 5. Run `pnpm dev` and open [localhost:3000](http://localhost:3000).
 
-Without Supabase settings, the app opens a sample-only guest workspace. Saving,
+Choose English, Malayalam, Tamil, Hindi, or Telugu before signing in. The choice
+is remembered on this device; the language switcher remains available throughout
+the workspace. Signed-out visitors start with a language grid, followed by a
+compact Google sign-in card. The dashboard retains the original green/cream
+styling and layout. Without Supabase settings, choose **Browse jobs first** to open a
+sample-only guest workspace. Saving,
 posting, and applying require sign-in. A configured but unreachable database
 returns an error rather than silently substituting sample records.
 
-No Turso token, NextAuth secret, Supabase secret/admin key, or Google secret in
-the app environment is required. Only the publishable key is accepted. Sessions
-and Row Level Security (RLS) control which records each user can access.
+Core hiring flows need only the publishable key and verified user sessions;
+Row Level Security (RLS) protects profiles, jobs, and applications. The optional
+AI translation cache/index writer uses a separate server-only Supabase secret
+key. Google provider secrets stay in Supabase, not the application environment.
 
 See [full deployment and key setup](docs/DEPLOYMENT.md). `.env.example` also lists
 optional Gemini/Sarvam settings and a migration-only database connection.
+The new AI services require [migration 002](supabase/migrations/202610250002_ai_services.sql)
+and a fresh server-only `SUPABASE_SECRET_KEY`. Follow
+[AI activation](docs/AI_SETUP.md) to configure the services and index existing
+vacancies. Skip migration 002 if it has already been applied.
 
 ## Implemented
 
+- Language-first onboarding in English, Malayalam, Tamil, Hindi and Telugu;
+  translated candidate/employer controls, recording, validation and AI messages.
+  The menu reads a database language registry through `/api/languages`.
+  `/api/translations` serves versioned Gemini-generated bundles from Supabase,
+  with bundled translations available when setup, provider calls or quota fail.
+- Guided resume building: one question at a time, editable typing and speech on
+  every question, optional skills/preferences, Back/Next, and a final review.
+  Transcripts are previewed before insertion. Answers stay in memory until saved;
+  closing an edited draft asks before discarding it.
 - Google login through Supabase, PKCE callback, HTTP-only cookies, session refresh,
   server-verified identity, and local-session logout.
 - Confirmed profiles, employer jobs, candidate applications, immutable profile
@@ -56,13 +75,22 @@ optional Gemini/Sarvam settings and a migration-only database connection.
 - Database access policies, checked write functions, duplicate prevention, job
   versions, and closed/expired-job checks.
 - Clearly labelled sample jobs, keyword search, optional Gemini extraction,
-  semantic matching and source-quoted explanations, and Sarvam transcription.
-- Private PDF export from the saved profile, English/Malayalam fonts, omitted
+  persistent pgvector retrieval and source-quoted explanations, and Sarvam
+  transcription. The job assistant retrieves current real vacancies before
+  generating answers with checked job/version/field citations.
+- Private PDF export from the saved profile, fonts for all five languages, omitted
   empty sections, and automatic page breaks. No generated PDF is stored.
 
-Job embeddings are generated on demand during semantic search. Durable embedding
-caching/indexing remains next-phase work; public write functions do not accept
-caller-supplied vectors. Most UI text is still English. Skills are self-reported;
+Job embeddings are stored once per current job version/model/content hash;
+searches embed only the question. New/reopened jobs attempt bounded indexing after
+the user-authorized save. Indexing failure does not undo a successful job save;
+`pnpm ai:index` is an explicit operator backfill/retry command, never a build step.
+Ordinary clients cannot write vectors or translation caches. Employer-written
+content and exact evidence quotes stay in their original language. Language
+changes do not rewrite saved profiles. Database configuration enables/disables
+and orders the five implemented language capabilities; adding an arbitrary row
+does not add missing speech/font support.
+Translations need native-speaker review before a public release. Skills are self-reported;
 quote containment does not prove an AI interpretation is correct. External job
 feeds, messaging, resume uploads, and automated hiring decisions are not included.
 
@@ -72,11 +100,14 @@ feeds, messaging, resume uploads, and automated hiring decisions are not include
 src/app/                 Pages, API handlers, and OAuth callback
 src/proxy.ts             Supabase session refresh
 src/features/workspace/  Candidate/employer interface and client helpers
+src/features/language/   Language selection, localized sign-in and shared state
+src/features/resume/     Guided questions, review and safe voice recording
+src/i18n/                Approved UI text, language capabilities and fallback dictionaries
 src/components/          Shared dialog and form fields
 src/domain/              Validation, matching, shared types, sample jobs
-src/server/              Supabase, auth, database, AI, HTTP, and PDF adapters
+src/server/              Supabase, auth, translations, RAG, HTTP, and PDF adapters
 supabase/migrations/     PostgreSQL tables, RLS policies, and write functions
-scripts/                 Optional checked PostgreSQL migration runner
+scripts/                 Checked migration runner and explicit vacancy-index backfill
 tests/                   Matching, database security, and built-server checks
 docs/                    Architecture, deployment, roadmap, historical archive
 evaluation/              Verification evidence and remaining staging checks
@@ -88,9 +119,14 @@ evaluation/              Verification evidence and remaining staging checks
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm test:multilingual
 pnpm test:database
+pnpm test:translations
+pnpm test:rag
+pnpm test:ai-database
 pnpm build
 pnpm test:integration
+pnpm test:ai-integration
 pnpm test:standalone
 pnpm test:vercel-build
 ```
@@ -107,14 +143,18 @@ minimal Next.js adapter to catch the Next 16.3 standalone/adapter tracing confli
 It also checks that the resume PDF font remains in the route trace. This is a
 local adapter regression check, not Vercel's complete cloud packager.
 
-Locally verified: type checking, lint, production build, 6 matching tests,
-44 database checks, and 96 assertions in each built-server mode.
+See [verification results](evaluation/results.md) for completed checks and their
+limits. Local provider fixtures do not establish real translation quality,
+retrieval relevance, provider quota/access, or hosted deployment success.
 
 ## Next phase
 
-Configure the staging project, deploy to Vercel, and verify sign-in, refresh,
-logout, two-account hiring, PDF downloads, and database persistence. Then validate
-real Gemini/Sarvam calls, bound embedding usage, and improve Malayalam onboarding.
+Activate migration 002 and the new AI writer only when ready, backfill existing
+vacancies, then review cached translations with native speakers and evaluate
+retrieval/citations against labelled questions. Test the existing language-first
+onboarding, Google login, six-question resume, PDF, and two-account hiring journey
+on the intended deployment. Then consider private resumable drafts and optional
+education/contact sections. Provider keys belong in server environment variables.
 See [two-person staging plan](docs/NEXT_STEPS.md) and
 [verification results](evaluation/results.md).
 

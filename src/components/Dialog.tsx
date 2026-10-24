@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { useLanguage } from "@/features/language/LanguageProvider";
 
 export function Dialog({
   title,
@@ -14,6 +15,7 @@ export function Dialog({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const { t } = useLanguage();
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   useEffect(() => {
@@ -69,7 +71,7 @@ export function Dialog({
           <h2>{title}</h2>
           <button
             className="icon-button"
-            aria-label="Close dialog"
+            aria-label={t("Close dialog")}
             onClick={onClose}
           >
             <X />

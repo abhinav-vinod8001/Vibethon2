@@ -13,6 +13,7 @@ import {
 } from "@/server/http";
 import { SAMPLE_JOBS } from "@/domain/samples";
 import { profileSchema } from "@/domain/validation";
+import { languageName, requestLocale } from "@/server/language";
 const extractSchema = z.object({
   skills: z
     .array(
@@ -50,6 +51,8 @@ export async function POST(request: Request) {
     checkOrigin(request);
     const user = await identity();
     const input = await body(request);
+    const locale = await requestLocale(input.locale);
+    const responseLanguage = languageName(locale);
     if (input.action === "extract") {
       const { transcript, language } = z
         .object({
@@ -58,8 +61,8 @@ export async function POST(request: Request) {
         })
         .parse(input);
       const raw = await generate(
-        `${SAFE_SYSTEM} Extract only explicitly supported skills. Each skill must include a short verbatim supporting quote from the transcript. Do not infer tool expertise from general tasks. Return skill labels in English; return up to two useful follow-up questions in the user's requested language. Do not rewrite or replace the original experience.`,
-        { transcript, language },
+        `${SAFE_SYSTEM} Extract only explicitly supported skills. Each skill must include a short verbatim supporting quote from the transcript. Do not infer tool expertise from general tasks. Return skill labels and up to two useful follow-up questions in ${responseLanguage}. Supporting quotes must remain verbatim in their original language; never translate quotes. The response language is ${responseLanguage}, regardless of the language used in the transcript or profile. Do not rewrite or replace the original experience.`,
+        { transcript, profileLanguage: language, responseLanguage },
         {
           type: "object",
           properties: {
@@ -133,9 +136,10 @@ export async function POST(request: Request) {
       availability: String(profile.availability),
     };
     const raw = await generate(
-      `${SAFE_SYSTEM} Answer using only retrieved sources. Explain relevant experience and uncertainties, not an eligibility verdict or numeric score. Each point must cite one source field and an exact quote from that field. Put missing information in unknowns. A quote supports traceability, not independent factual verification. Candidate skills are self-reported. For applicant summaries describe evidence without ranking candidates. Respond in plain English.`,
+      `${SAFE_SYSTEM} Answer using only retrieved sources. Explain relevant experience and uncertainties, not an eligibility verdict or numeric score. Each point must cite one source field and an exact quote from that field. Put missing information in unknowns. A quote supports traceability, not independent factual verification. Candidate skills are self-reported. For applicant summaries describe evidence without ranking candidates. Write all explanation text and unknowns in plain ${responseLanguage}. Source identifiers remain unchanged. Quotes must remain exact and in their original language; never translate quotes.`,
       {
         action,
+        responseLanguage,
         question:
           question ||
           "Explain the relevant experience and important things to clarify for this vacancy.",

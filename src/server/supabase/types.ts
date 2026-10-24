@@ -72,6 +72,18 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      match_job_embeddings: {
+        Args: {
+          p_embedding: Json;
+          p_model: string;
+          p_location?: string;
+          p_category?: string;
+          p_type?: string;
+          p_limit?: number;
+          p_min_similarity?: number;
+        };
+        Returns: { id: string; similarity: number; job_version: number }[];
+      };
       save_profile: {
         Args: { p_profile: Json; p_confirmed: boolean };
         Returns: Json;
