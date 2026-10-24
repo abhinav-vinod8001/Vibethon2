@@ -9,7 +9,8 @@ Vercel or another Node.js host. Google sign-in is configured inside Supabase.
 
 ## Start locally
 
-Use Node.js 22.13+ and pnpm 11.25.0.
+Use Node.js 22 (22.13+) and pnpm 11.25.0. The package pins Node to the 22.x major
+so Vercel uses the same runtime as CI and Docker.
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -91,6 +92,7 @@ pnpm test:database
 pnpm build
 pnpm test:integration
 pnpm test:standalone
+pnpm test:vercel-build
 ```
 
 Database tests execute the actual SQL in PGlite PostgreSQL with a simulated Auth
@@ -98,6 +100,12 @@ schema. Integration starts a built Next.js server and talks to a local simulated
 Supabase Auth/PostgREST gateway backed by the same PostgreSQL policies/functions.
 These checks need no cloud credentials and introduce no production auth bypass.
 They do not replace a real hosted Supabase/Google browser check.
+
+Vercel uses its deployment adapter output; local/Node/Docker builds retain
+standalone output. `test:vercel-build` builds with Vercel's environment flag and a
+minimal Next.js adapter to catch the Next 16.3 standalone/adapter tracing conflict.
+It also checks that the resume PDF font remains in the route trace. This is a
+local adapter regression check, not Vercel's complete cloud packager.
 
 Locally verified: type checking, lint, production build, 6 matching tests,
 44 database checks, and 96 assertions in each built-server mode.

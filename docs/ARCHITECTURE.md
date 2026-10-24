@@ -4,6 +4,11 @@ JobSathi runs on standard Next.js 16/Node.js with Supabase PostgreSQL and Supaba
 Auth. Gemini and Sarvam run behind server routes. The app has no Sites/Workers/D1
 runtime or trusted identity-header dependency.
 
+Vercel uses its adapter-managed build output. Outside Vercel the config emits
+standalone output for Node/Docker. This avoids Next 16.3's adapter/standalone
+tracing conflict; CI also exercises a minimal adapter build. Node is pinned to
+the 22.x major across the package, CI and Docker.
+
 ## Request flow
 
 Browser → Next.js route → Supabase-verified user → domain validation →

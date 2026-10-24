@@ -92,6 +92,19 @@ The web deployment does not require the migration connection or an admin key.
    or a failed database query returns 503. This is not a Google/AI health check.
 5. Complete the two-account acceptance checks below before calling staging ready.
 
+The package pins Node to `22.x`. Leave Vercel's Next.js output directory at its
+detected default and use `pnpm build`. The config enables standalone output only
+outside Vercel; Vercel's adapter handles its own packaging. For Next 16.3.4,
+forcing standalone output with an adapter causes a missing
+`.next/next-server.js.nft.json` failure after compilation has succeeded.
+See the [upstream issue](https://github.com/vercel/next.js/issues/96646).
+Do not create an empty tracing file as a workaround.
+
+After updating to the deployment fix, deploy the latest `main` commit. Redeploying
+the older failed commit retains its broken config. The missing trace is unrelated
+to Google OAuth credentials. Configure Google/return URLs once the domain is ready,
+or test login on localhost first.
+
 Use a stable staging domain for auth. Random preview domains need deliberate
 configuration and separate data/environment settings. No infrastructure has been
 provisioned by the source migration itself.

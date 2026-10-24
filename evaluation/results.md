@@ -15,6 +15,7 @@ provisioned by these checks.
 | Built Next.js integration | 96 assertions: actual HTTP routes, local simulated Auth/PostgREST gateway, real PostgreSQL policies/RPCs |
 | Standalone integration | 96 assertions pass against the packaged server, including PDF fonts and runtime Supabase settings |
 | Production build | Pass: Next.js 16.3.4, standalone output and session-refresh proxy |
+| Vercel-mode adapter regression | Pass after fix: adapter build with VERCEL=1, default output, and traced PDF font; original config reproduced the reported ENOENT first |
 | CI and Docker | Configuration updated; remote CI and container execution not observed locally |
 
 The integration suite tests PKCE sign-in URL/callback exchange, fixed return URL,
@@ -38,6 +39,24 @@ surface are test fixtures. Tests do not establish compatibility with every hoste
 gateway feature, exercise real Google consent, prove distributed concurrency, or
 test a real TLS database connection. The optional migration runner's live hosted
 connection remains a staging check.
+
+## Vercel packaging failure and fix
+
+The supplied Vercel log for commit c46a2ea showed compilation, TypeScript and
+static generation succeeding, followed by a missing `.next/next-server.js.nft.json`
+error. The same failure was reproduced locally with NEXT_ADAPTER_PATH set to a
+minimal adapter and the original unconditional standalone output.
+
+Next 16.3 suppresses the whole-server trace for adapters, but standalone packaging
+still reads it. The config now leaves output at the platform default when
+VERCEL=1 and retains standalone output for local/Node/Docker builds. The new
+`pnpm test:vercel-build` passes the previously failing adapter path and checks the
+PDF font's route trace. Node is pinned to 22.x, matching CI/Docker; the engine
+warning in the log was separate from the missing-file failure.
+
+Reference: [Next.js issue #96646](https://github.com/vercel/next.js/issues/96646).
+This local fixture exercises the Next adapter lifecycle, not Vercel's full cloud
+packager. The new commit still needs its own hosted deployment result.
 
 ## PDF scope
 

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "22.x"
   },
   "packageManager": "pnpm@11.25.0",
   "scripts": {
@@ -16,6 +16,7 @@
     "test": "node --experimental-strip-types --test tests/matching.test.ts",
     "test:integration": "node tests/integration.mjs",
     "test:standalone": "node tests/integration.mjs --standalone",
+    "test:vercel-build": "node tests/vercel-build.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "test:database": "node --test tests/database.test.mjs",
     "format": "prettier --write src scripts tests next.config.ts"
