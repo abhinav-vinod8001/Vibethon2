@@ -3437,3 +3437,15 @@ html:not([lang="en"]) .nav-item {
   color: var(--green-dark);
   font-weight: 650;
 }
+.active-role-label {
+  align-self: center;
+  min-width: 0;
+  padding: 7px 13px;
+  border: 1px solid #d9e8d5;
+  border-radius: 999px;
+  background: #edf5ea;
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}

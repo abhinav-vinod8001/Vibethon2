@@ -36,7 +36,7 @@ import { ResumeDownload } from "./ResumeDownload";
 import { ResumeWizard } from "@/features/resume/ResumeWizard";
 import { useLanguage } from "@/features/language/LanguageProvider";
 import { LanguageSwitcher } from "@/features/language/LanguageSwitcher";
-import { ROLE_COOKIE, type EntryRole } from "@/features/language/role";
+import { type EntryRole } from "@/features/language/role";
 import { CATEGORIES, type Application, type Job } from "@/domain/types";
 import { filterJobs, keywordScore } from "@/domain/matching";
 
@@ -106,7 +106,7 @@ export default function JobSathi({
     source: string;
     status?: string;
   } | null>(null);
-  const [workspace, setWorkspace] = useState<EntryRole>(initialRole);
+  const workspace = initialRole;
   const [view, setView] = useState(
       initialRole === "employer" ? "overview" : "discover",
     ),
@@ -182,12 +182,6 @@ export default function JobSathi({
   const navigate = (next: string) => {
     setView(next);
     setSelected(null);
-  };
-  const switchWorkspace = (next: "candidate" | "employer") => {
-    document.cookie = `${ROLE_COOKIE}=${next}; Path=/; Max-Age=31536000; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
-    setWorkspace(next);
-    setView(next === "candidate" ? "discover" : "overview");
-    setError("");
   };
   const search = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -467,8 +461,7 @@ export default function JobSathi({
         <button
           className="brand"
           onClick={() => {
-            switchWorkspace("candidate");
-            navigate("discover");
+            navigate(workspace === "candidate" ? "discover" : "overview");
           }}
           aria-label={t("JobSathi home")}
         >
@@ -567,19 +560,8 @@ export default function JobSathi({
           <div className="mobile-brand">
             <Handshake size={22} /> JobSathi
           </div>
-          <div className="workspace-switch" aria-label={t("Choose workspace")}>
-            <button
-              className={workspace === "candidate" ? "selected" : ""}
-              onClick={() => switchWorkspace("candidate")}
-            >
-              {t("For jobseekers")}
-            </button>
-            <button
-              className={workspace === "employer" ? "selected" : ""}
-              onClick={() => switchWorkspace("employer")}
-            >
-              {t("For employers")} <ArrowUpRight size={13} />
-            </button>
+          <div className="active-role-label">
+            {t(workspace === "candidate" ? "Employee" : "Employer")}
           </div>
           <div className="topbar-right">
             <LanguageSwitcher />
