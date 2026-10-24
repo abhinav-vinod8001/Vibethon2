@@ -8,6 +8,7 @@ export type Bootstrap = {
   applications: Application[];
   employerApplications: Application[];
   ai: { generation: boolean; speech: boolean; embeddings: boolean };
+  auth: { configured: boolean };
 };
 export type Explanation = {
   points: { text: string; source: string; quote: string }[];

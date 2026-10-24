@@ -1,45 +1,30 @@
-import type { NextAuthOptions } from "next-auth";
-import { getToken } from "next-auth/jwt";
-import GoogleProvider from "next-auth/providers/google";
-import { cookies } from "next/headers";
+import { createSupabaseClient } from "./supabase/server";
+import { supabaseConfig } from "./supabase/config";
+import { HttpError } from "./errors";
 
-export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
-  providers:
-    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-      ? [
-          GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          }),
-        ]
-      : [],
-  session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 7 },
-  callbacks: {
-    async jwt({ token, account }) {
-      if (account)
-        token.userId = `${account.provider}:${account.providerAccountId}`;
-      return token;
-    },
-  },
-};
-
-/** Only cryptographically verified session cookies establish identity. */
+/** Verify identity with Supabase Auth; never trust a user object from a cookie. */
 export async function currentUser() {
-  if (!process.env.NEXTAUTH_SECRET) return null;
-  const incoming = await cookies();
-  const token = await getToken({
-    req: {
-      cookies: Object.fromEntries(
-        incoming.getAll().map((cookie) => [cookie.name, cookie.value]),
-      ),
-      headers: {},
-    } as Parameters<typeof getToken>[0]["req"],
-    secret: process.env.NEXTAUTH_SECRET,
-    secureCookie:
-      process.env.NEXTAUTH_URL?.startsWith("https://") ??
-      process.env.NODE_ENV === "production",
-  });
-  if (!token || typeof token.userId !== "string") return null;
-  return { userId: token.userId, displayName: token.name || "JobSathi member" };
+  if (!supabaseConfig()) return null;
+  const client = await createSupabaseClient();
+  const { data, error } = await client.auth.getUser();
+  if (error) {
+    if (
+      error.status === 0 ||
+      error.status === 429 ||
+      (error.status && error.status >= 500) ||
+      error.name === "AuthRetryableFetchError"
+    )
+      throw new HttpError(
+        503,
+        "Sign-in is temporarily unavailable. Please retry.",
+      );
+    return null;
+  }
+  if (!data.user) return null;
+  const name: unknown =
+    data.user.user_metadata?.full_name ?? data.user.user_metadata?.name;
+  return {
+    userId: data.user.id,
+    displayName: typeof name === "string" ? name : "JobSathi member",
+  };
 }

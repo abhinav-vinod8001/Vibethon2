@@ -4,9 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
 import { once } from "node:events";
-import { randomBytes } from "node:crypto";
-import { pathToFileURL } from "node:url";
-import { encode } from "next-auth/jwt";
+import { startSupabaseFixture } from "./helpers/supabase.mjs";
 import assert from "node:assert/strict";
 
 const directory = await mkdtemp(join(tmpdir(), "jobsathi-integration-"));
@@ -16,16 +14,13 @@ await once(socket, "listening");
 const port = socket.address().port;
 await new Promise((resolve) => socket.close(resolve));
 const base = `http://127.0.0.1:${port}`;
-const secret = randomBytes(48).toString("base64url");
+const supabase = await startSupabaseFixture();
 const environment = {
   ...process.env,
   NODE_ENV: "production",
-  DATABASE_URL: pathToFileURL(join(directory, "test.db")).href,
-  DATABASE_AUTH_TOKEN: "",
-  NEXTAUTH_URL: base,
-  NEXTAUTH_SECRET: secret,
-  GOOGLE_CLIENT_ID: "synthetic-google-client",
-  GOOGLE_CLIENT_SECRET: "synthetic-google-secret",
+  APP_URL: base,
+  NEXT_PUBLIC_SUPABASE_URL: supabase.url,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: supabase.key,
   GEMINI_API_KEY: "",
   GEMINI_MODEL: "",
   SARVAM_API_KEY: "",
@@ -42,14 +37,7 @@ let server;
 let output = "";
 let checks = 0;
 async function cookie(user) {
-  return (
-    "next-auth.session-token=" +
-    (await encode({
-      secret,
-      token: { userId: user, name: "Synthetic Test User" },
-      maxAge: 3600,
-    }))
-  );
+  return supabase.cookie(user);
 }
 async function request(
   path,
@@ -83,22 +71,6 @@ async function request(
   return data;
 }
 try {
-  const migration = spawn(process.execPath, ["scripts/migrate.mjs"], options);
-  migration.stdout.on("data", (data) => {
-    output += data;
-  });
-  migration.stderr.on("data", (data) => {
-    output += data;
-  });
-  assert.equal((await once(migration, "exit"))[0], 0, output);
-  // Running migrations twice must preserve existing schema/data.
-  const repeat = spawn(process.execPath, ["scripts/migrate.mjs"], options);
-  assert.equal(
-    (await once(repeat, "exit"))[0],
-    0,
-    "Repeat migrations must be idempotent",
-  );
-  checks++;
   server = spawn(
     process.execPath,
     process.argv.includes("--standalone")
@@ -123,30 +95,79 @@ try {
   for (let attempt = 0; attempt < 120; attempt++) {
     if (server.exitCode !== null) throw new Error(output);
     try {
-      if ((await fetch(base + "/api/health")).ok) {
+      const health = await fetch(base + "/api/health");
+      if (health.ok) {
         ready = true;
         break;
       }
+      if (attempt === 119)
+        output += `\nHealth: ${health.status} ${await health.text()}`;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   assert.ok(ready, output);
   assert.equal((await fetch(base)).status, 200);
   checks++;
-  const providers = await request("/api/auth/providers");
-  assert.equal(providers.google.id, "google");
+  const { employer, candidate, stranger } = supabase.users;
+  const login = await fetch(base + "/api/auth/sign-in", {
+    method: "POST",
+    headers: { origin: base },
+  });
+  assert.equal(login.status, 200);
   checks++;
-  const csrfResponse = await fetch(base + "/api/auth/csrf");
-  const csrf = await csrfResponse.json();
-  assert.ok(csrf.csrfToken);
+  const oauth = new URL((await login.json()).url);
+  assert.equal(oauth.origin, supabase.url);
   checks++;
-  const csrfCookie = csrfResponse.headers
+  assert.equal(oauth.searchParams.get("provider"), "google");
+  checks++;
+  assert.equal(oauth.searchParams.get("redirect_to"), base + "/auth/callback");
+  checks++;
+  assert.equal(oauth.searchParams.get("code_challenge_method"), "s256");
+  checks++;
+  const pkceCookies = login.headers.getSetCookie();
+  assert.ok(
+    pkceCookies.some(
+      (value) => value.includes("code-verifier=") && value.includes("HttpOnly"),
+    ),
+  );
+  checks++;
+  const code = supabase.issueCode(
+    employer,
+    oauth.searchParams.get("code_challenge"),
+  );
+  const callback = await fetch(
+    base + "/auth/callback?code=" + code + "&next=https://other.test",
+    {
+      redirect: "manual",
+      headers: {
+        cookie: pkceCookies.map((value) => value.split(";")[0]).join("; "),
+      },
+    },
+  );
+  assert.equal(callback.status, 307);
+  checks++;
+  assert.equal(callback.headers.get("location"), base + "/");
+  checks++;
+  assert.ok(
+    callback.headers
+      .getSetCookie()
+      .some((value) => value.startsWith(supabase.cookieName + "=")),
+  );
+  checks++;
+  const browserCookie = callback.headers
     .getSetCookie()
     .map((value) => value.split(";")[0])
     .join("; ");
-  const employer = "google:test-employer",
-    candidate = "google:test-candidate",
-    stranger = "google:test-stranger";
+  const browserState = await fetch(base + "/api/bootstrap", {
+    headers: { cookie: browserCookie },
+  });
+  assert.equal((await browserState.json()).user.name, "Synthetic Test User");
+  checks++;
+  const failedCallback = await fetch(base + "/auth/callback?code=bad-code", {
+    redirect: "manual",
+  });
+  assert.equal(failedCallback.headers.get("location"), base + "/?auth_error=1");
+  checks++;
   const profile = {
     name: "Synthetic Candidate",
     location: "Kothamangalam",
@@ -415,46 +436,81 @@ try {
     method: "PUT",
     headers: {
       "content-type": "application/json",
-      cookie: "next-auth.session-token=invalid",
+      cookie: supabase.cookieName + "=invalid",
     },
     body: JSON.stringify({ profile, confirmed: true }),
   });
   assert.equal(tampered.status, 401);
   checks++;
-  const expired = await encode({
-    secret,
-    token: { userId: employer },
-    maxAge: -3600,
-  });
   const expiredResponse = await fetch(base + "/api/profile", {
     method: "PUT",
     headers: {
       "content-type": "application/json",
-      cookie: "next-auth.session-token=" + expired,
+      cookie: supabase.cookie(employer, -3600),
     },
     body: JSON.stringify({ profile, confirmed: true }),
   });
   assert.equal(expiredResponse.status, 401);
   checks++;
-  const session = await request(
-    "/api/auth/session",
-    "GET",
-    undefined,
-    employer,
-  );
+  const session = await request("/api/bootstrap", "GET", undefined, employer);
   assert.equal(session.user.name, "Synthetic Test User");
   checks++;
-  const logout = await fetch(base + "/api/auth/signout", {
+  const spoofed = supabase.session(employer);
+  spoofed.user.id = candidate;
+  spoofed.user.user_metadata.full_name = "Forged Cookie Name";
+  const spoofedCookie = `${supabase.cookieName}=base64-${Buffer.from(JSON.stringify(spoofed)).toString("base64url")}`;
+  const verified = await fetch(base + "/api/bootstrap", {
+    headers: { cookie: spoofedCookie },
+  });
+  const verifiedState = await verified.json();
+  assert.equal(verifiedState.user.name, "Synthetic Test User");
+  checks++;
+  assert.equal(verifiedState.profile.name, longProfile.name);
+  checks++;
+  const refresh = await fetch(base + "/api/bootstrap", {
+    headers: { cookie: supabase.cookie(employer, 30) },
+  });
+  assert.equal(refresh.status, 200);
+  checks++;
+  assert.equal((await refresh.json()).user.name, "Synthetic Test User");
+  checks++;
+  const refreshedCookies = refresh.headers.getSetCookie();
+  assert.ok(
+    refreshedCookies.some(
+      (value) =>
+        value.startsWith(supabase.cookieName + "=") &&
+        value.includes("HttpOnly"),
+    ),
+  );
+  checks++;
+  assert.ok(refresh.headers.get("cache-control").includes("no-store"));
+  checks++;
+  const refreshed = await fetch(base + "/api/bootstrap", {
+    headers: {
+      cookie: refreshedCookies.map((value) => value.split(";")[0]).join("; "),
+    },
+  });
+  assert.equal((await refreshed.json()).user.name, "Synthetic Test User");
+  checks++;
+  for (const path of ["/api/auth/sign-in", "/api/auth/sign-out"]) {
+    const crossSite = await fetch(base + path, {
+      method: "POST",
+      headers: { origin: "https://other.test", cookie: await cookie(employer) },
+    });
+    assert.equal(crossSite.status, 403);
+    checks++;
+  }
+  supabase.databaseOutage(true);
+  await request("/api/health", "GET", undefined, undefined, 503);
+  await request("/api/bootstrap", "GET", undefined, undefined, 503);
+  supabase.databaseOutage(false);
+  await request("/api/health");
+  const logout = await fetch(base + "/api/auth/sign-out", {
     method: "POST",
     headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      cookie: `${csrfCookie}; ${await cookie(employer)}`,
+      origin: base,
+      cookie: await cookie(employer),
     },
-    body: new URLSearchParams({
-      csrfToken: csrf.csrfToken,
-      callbackUrl: base,
-      json: "true",
-    }),
   });
   assert.equal(logout.status, 200);
   checks++;
@@ -463,13 +519,72 @@ try {
       .getSetCookie()
       .some(
         (value) =>
-          value.startsWith("next-auth.session-token=") &&
+          value.startsWith(supabase.cookieName + "=") &&
           value.includes("Max-Age=0"),
       ),
   );
   checks++;
+  server.kill();
+  await once(server, "exit");
+  // A separate process proves empty config works independently of the fixture.
+  server = spawn(
+    process.execPath,
+    process.argv.includes("--standalone")
+      ? [".next/standalone/server.js"]
+      : [
+          "node_modules/next/dist/bin/next",
+          "start",
+          "-H",
+          "127.0.0.1",
+          "-p",
+          String(port),
+        ],
+    {
+      ...options,
+      env: {
+        ...environment,
+        NEXT_PUBLIC_SUPABASE_URL: "",
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "",
+      },
+    },
+  );
+  server.stdout.on("data", (data) => {
+    output += data;
+  });
+  server.stderr.on("data", (data) => {
+    output += data;
+  });
+  let demo;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    if (server.exitCode !== null) throw new Error(output);
+    try {
+      const response = await fetch(base + "/api/bootstrap");
+      if (response.ok) {
+        demo = await response.json();
+        break;
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  assert.ok(demo, output);
+  checks++;
+  assert.equal(demo.auth.configured, false);
+  checks++;
+  assert.equal(demo.user, null);
+  checks++;
+  assert.ok(demo.jobs.length > 0 && demo.jobs.every((job) => job.sample));
+  checks++;
+  await request("/api/health", "GET", undefined, undefined, 503);
+  await request("/api/auth/sign-in", "POST", undefined, undefined, 503);
+  await request(
+    "/api/profile",
+    "PUT",
+    { profile, confirmed: true },
+    undefined,
+    401,
+  );
   console.log(
-    `PASS: ${checks} integration assertions. Built Next.js routes, temporary SQLite/libSQL database, signed synthetic sessions. No external AI/OAuth requests.`,
+    `PASS: ${checks} integration assertions. Built Next.js routes, PostgreSQL/RLS, simulated Supabase Auth/PostgREST. No external AI/Google requests.`,
   );
 } finally {
   if (server && server.exitCode === null) {
@@ -477,4 +592,5 @@ try {
     await once(server, "exit");
   }
   await rm(directory, { recursive: true, force: true });
+  await supabase.close();
 }

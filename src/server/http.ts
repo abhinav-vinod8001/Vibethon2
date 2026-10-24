@@ -1,13 +1,8 @@
 import { currentUser } from "./auth";
 import { getDatabase } from "./database";
-export class HttpError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+import { HttpError } from "./errors";
+import { appOrigin } from "./supabase/config";
+export { HttpError } from "./errors";
 export async function identity() {
   const user = await currentUser();
   if (!user)
@@ -63,7 +58,9 @@ export async function body(request: Request) {
 }
 export function checkOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
+  if (origin && origin !== appOrigin())
+    throw new HttpError(403, "Cross-site writes are not allowed.");
+  if (request.headers.get("sec-fetch-site") === "cross-site")
     throw new HttpError(403, "Cross-site writes are not allowed.");
 }
 export function publicJob(row: Record<string, unknown>) {
@@ -79,7 +76,7 @@ export function publicJob(row: Record<string, unknown>) {
     description: row.description,
     requirements: row.requirements,
     shift: row.shift,
-    deadline: row.deadline,
+    deadline: row.deadline ?? "",
     status: row.status,
     version: row.version,
     createdAt: row.created_at,

@@ -28,7 +28,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { signIn, signOut } from "next-auth/react";
 import { api } from "./api";
 import { useBootstrap } from "./useBootstrap";
 import type { Explanation, Suggestion, JobDraft } from "./types";
@@ -117,6 +116,30 @@ export default function JobSathi() {
     recordTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
     stream = useRef<MediaStream | null>(null),
     chunkRef = useRef<Blob[]>([]);
+  async function signIn() {
+    setBusy("auth");
+    try {
+      const { url } = await api<{ url: string }>("/api/auth/sign-in", {
+        method: "POST",
+      });
+      window.location.assign(url);
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+  async function signOut() {
+    setBusy("auth");
+    try {
+      await api("/api/auth/sign-out", { method: "POST" });
+      window.location.reload();
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
   useEffect(() => {
     return () => {
       if (recordTimer.current) clearTimeout(recordTimer.current);
@@ -598,13 +621,18 @@ export default function JobSathi() {
                 </button>
                 <button
                   className="text-button"
-                  onClick={() => void signOut({ callbackUrl: "/" })}
+                  onClick={() => void signOut()}
+                  disabled={busy === "auth"}
                 >
                   Sign out
                 </button>
               </>
             ) : (
-              <button className="sign-in" onClick={() => void signIn()}>
+              <button
+                className="sign-in"
+                disabled={busy === "auth"}
+                onClick={() => void signIn()}
+              >
                 Sign in <ArrowRight size={14} />
               </button>
             )}

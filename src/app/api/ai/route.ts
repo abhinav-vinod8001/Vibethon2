@@ -12,6 +12,7 @@ import {
   route,
 } from "@/server/http";
 import { SAMPLE_JOBS } from "@/domain/samples";
+import { profileSchema } from "@/domain/validation";
 const extractSchema = z.object({
   skills: z
     .array(
@@ -94,29 +95,22 @@ export async function POST(request: Request) {
         applicationId: z.string().uuid().optional(),
       })
       .parse(input);
-    const db = database();
-    const row = await db
-      .prepare("SELECT * FROM jobs WHERE id=?")
-      .bind(jobId)
-      .first();
+    const db = await database();
+    const row = z.string().uuid().safeParse(jobId).success
+      ? await db.job(jobId)
+      : null;
     const job = row ? publicJob(row) : SAMPLE_JOBS.find((j) => j.id === jobId);
     if (!job) throw new HttpError(404, "Vacancy not found.");
     let profile;
     if (action === "applicant") {
       if (!row || row.owner_id !== user.userId || !applicationId)
         throw new HttpError(403, "This applicant is not in your workspace.");
-      const a = await db
-        .prepare("SELECT * FROM applications WHERE id=? AND job_id=?")
-        .bind(applicationId, jobId)
-        .first();
+      const a = await db.application(applicationId, jobId);
       if (!a || a.status === "withdrawn")
         throw new HttpError(404, "Application is not available.");
-      profile = JSON.parse(String(a.snapshot));
+      profile = profileSchema.parse(a.snapshot);
     } else {
-      const p = await db
-        .prepare("SELECT * FROM profiles WHERE user_id=?")
-        .bind(user.userId)
-        .first();
+      const p = await db.profile(user.userId);
       if (!p)
         throw new HttpError(
           400,

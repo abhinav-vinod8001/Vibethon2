@@ -1,51 +1,80 @@
 # Architecture
 
-JobSathi now uses the standard Next.js Node runtime. It has no OpenAI/Sites hosting dependency, Cloudflare binding, Worker entry point, custom preview protocol or platform-provided identity headers.
+JobSathi runs on standard Next.js 16/Node.js with Supabase PostgreSQL and Supabase
+Auth. Gemini and Sarvam run behind server routes. The app has no Sites/Workers/D1
+runtime or trusted identity-header dependency.
+
+## Request flow
+
+Browser → Next.js route → Supabase-verified user → domain validation →
+user-scoped Supabase Data API/RPC → PostgreSQL access policies → response.
+
+`src/proxy.ts` refreshes Supabase sessions and forwards updated cookies to the
+request and browser. `src/server/auth.ts` calls Auth `getUser()` to verify identity;
+it never authorizes from an unverified cookie user object. Clients are constructed
+per request, not cached globally. Responses carrying sessions are private/no-store.
+The browser uses Next.js routes; session cookies are HTTP-only.
+
+Sign-in is a same-origin POST returning the Google OAuth URL. `/auth/callback`
+exchanges the PKCE code and redirects only to configured APP_URL. Sign-out is a
+same-origin POST using Supabase local-session logout. Google provider secrets
+live in Supabase's dashboard. Profiles and ownership use Supabase user UUIDs.
+
+## Data access
+
+The initial SQL in `supabase/migrations` defines profiles, jobs, applications,
+constraints, indexes, read policies and checked write functions. API roles have
+no direct INSERT/UPDATE/DELETE privileges. Five authenticated RPCs save confirmed
+profiles, create jobs, change job status, submit applications, and change
+application status. They explicitly check auth.uid()/ownership, use an empty
+search path, and cannot be executed by anonymous clients.
+
+Application insertion locks the current job against concurrent status updates,
+checks its version/expiry/status, copies the saved profile, and enforces one
+application per candidate/job. Snapshots cannot be overwritten through public
+APIs. Only candidates withdraw; only owners shortlist/contact; withdrawn records
+cannot change. Narrow private helpers avoid mutually recursive RLS policies.
+
+Profiles are owner-only. Employers see submitted snapshots for their jobs.
+Active unexpired vacancies are public; owners/applicants can still read their
+related closed/expired jobs. There is no separate candidate/employer role: one
+account can perform either workflow, matching the existing product.
+
+Native PostgreSQL dates, timestamps and JSON are mapped to the existing frontend
+types by server adapters. Empty deadlines are stored as NULL. The app never uses
+a Supabase admin key; even server reads carry the user's JWT and respect RLS.
+Migrations run separately, through SQL Editor or the checked PostgreSQL runner.
 
 ## Source boundaries
 
 | Directory | Responsibility |
 | --- | --- |
-| src/app | Next.js pages, CSS and HTTP route entry points |
-| src/features/workspace | Candidate/employer workspace behavior and views |
-| src/components | Shared accessible dialog and form field primitives |
-| src/domain | Shared types, sample data, validation and pure matching logic |
-| src/server | Authentication, parameterized database access, HTTP helpers and AI providers |
-| src/db | Drizzle schema used to generate migrations |
-| drizzle | Ordered SQL migrations and schema metadata |
-| scripts | Platform-independent migration runner |
-| tests | Pure matching tests and built-server integration tests |
+| src/app | Pages, route handlers, OAuth callback |
+| src/features/workspace | Candidate/employer interface, forms, client requests |
+| src/components | Shared dialog and form fields |
+| src/domain | Validation, matching, samples and product types |
+| src/server/supabase | Connection config, cookie client and database types |
+| src/server | Identity, database operations, HTTP, AI and PDF |
+| supabase/migrations | Versioned PostgreSQL schema, policies and RPCs |
+| tests | Matching, PostgreSQL security and built-server integration |
 
-## Request flow
+## AI and PDF
 
-Browser → Next.js route → verified session cookie → domain validation → parameterized SQL → response.
+Keyword/manual flows need no AI keys. Semantic search generates vectors on demand
+and performs exact cosine comparisons over a bounded vacancy set. Public RPCs
+cannot supply trusted vectors. Durable indexing, request bounds and pgvector are
+future work. Quote containment is a traceability check, not proof of correctness.
 
-Gemini and Sarvam run only behind server routes. Credentials come from process environment variables. Keyword search and manual profile entry remain usable without AI providers. Configuration flags indicate credentials are present, not provider health.
+`GET /api/profile/resume` verifies the user, loads their confirmed saved profile
+under RLS, and renders an in-memory PDF. A query-string user ID cannot change the
+owner. PDFs have private/no-store headers and are not retained. Noto Malayalam
+fonts and the documented fontkit patch remain bundled in standalone output.
 
-## Authentication
+## Verification boundaries
 
-NextAuth.js handles Google OAuth and encrypted JWT session cookies. Protected routes derive identity from a cryptographically verified cookie. Client-supplied identity headers are ignored. There is no mock-production login or development bypass. Stable owner IDs use the provider and provider account ID, not an unverified email address.
-
-Google credentials and NEXTAUTH_SECRET must be configured before interactive sign-in works. Integration tests issue synthetic signed sessions with an ephemeral test-only secret; they do not add an authentication bypass to application code. Real Google redirect/callback and logout still require browser verification with configured credentials.
-
-## Data
-
-The database adapter uses @libsql/client with a SQLite-compatible schema. Development defaults to file:.data/jobsathi.db. A deployment must explicitly supply DATABASE_URL. Use a hosted libSQL endpoint for Vercel/serverless, or a persistent volume with a single Node service. An ephemeral local file is not durable production storage.
-
-Routes retain parameterized SQL and atomic application insertion, ownership checks, vacancy versions, confirmed profile snapshots and closed/expired-job exclusion. The adapter is intentionally small so switching deployment platforms does not change route behavior. A future PostgreSQL migration would require deliberate SQL/schema changes; this is not a universal multi-database adapter.
-
-Migrations are explicit release operations. The runner applies ordered SQL files transactionally, records checksums and skips unchanged applied migrations. It rejects modified applied migrations. Application requests do not create or alter tables.
-
-## Preserved product limits
-
-Retrieval still uses a bounded set of vacancies and exact cosine comparisons, without an ANN index. Most UI text remains English. Skills remain self-reported. Quote containment is a traceability check, not proof of semantic correctness. External feeds, messaging and automated hiring decisions are not implemented.
-
-## Historical records
-
-docs/archive contains the original repository review and the requested summary of the unrelated VoxPop app previously in this folder. Those documents describe historical versions. Current source paths and setup are defined here and in DEPLOYMENT.md.
-
-## Resume export
-
-GET /api/profile/resume verifies the session, loads only that user's saved/confirmed profile and renders an in-memory PDF with PDFKit. It does not accept a target user ID or read unsaved browser state. Missing profiles return 404 and unauthenticated calls return 401. The attachment has a generic filename and private/no-store response headers. No generated PDF is retained.
-
-The English/Malayalam Noto font and OFL license live in assets/fonts. Next.js traces the font into the standalone deployment. patches/README.md documents the version-pinned fontkit fix for legal NULL OpenType anchors; scripts and Docker install that patch through pnpm. Empty sections are omitted and text continues onto new pages with page numbering. The feature does not rewrite candidate claims, invent contact information or guarantee ATS compatibility.
+PGlite tests execute the real migration with simulated Auth identities. Built
+Next.js integration tests use a local Auth/PostgREST protocol fixture backed by
+that PostgreSQL instance. No test login branch exists in application source.
+Actual hosted Supabase, Google/browser sessions, provider outputs and deployment
+persistence require staging checks. Existing SQLite/D1 records have not moved.
+Historical project reviews remain in `docs/archive`.

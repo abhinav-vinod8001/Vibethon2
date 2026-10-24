@@ -14,7 +14,12 @@ export function useBootstrap() {
     void api<Bootstrap>("/api/bootstrap", { signal: controller.signal })
       .then((result) => {
         setData(result);
-        setError("");
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("auth_error")) {
+          setError("Google sign-in could not be completed. Please try again.");
+          url.searchParams.delete("auth_error");
+          window.history.replaceState(null, "", url);
+        } else setError("");
       })
       .catch((error) => {
         if (!controller.signal.aborted) setError(error.message);

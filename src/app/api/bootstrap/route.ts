@@ -8,74 +8,58 @@ import {
   publicJob,
   route,
 } from "@/server/http";
+import { supabaseConfig } from "@/server/supabase/config";
+import type { ApplicationRow } from "@/server/supabase/types";
 export const dynamic = "force-dynamic";
 export async function GET() {
   return route(async () => {
-    const user = await currentUser();
-    const db = database();
-    const currentJobs = await db
-      .prepare(
-        "SELECT * FROM jobs WHERE status='active' AND (deadline='' OR deadline>=?) ORDER BY created_at DESC LIMIT 200",
-      )
-      .bind(new Date().toISOString().slice(0, 10))
-      .all();
-    if (!user)
-      return json({
-        user: null,
-        profile: null,
-        jobs: [...currentJobs.results.map(publicJob), ...SAMPLE_JOBS],
-        myJobs: [],
-        applications: [],
-        employerApplications: [],
-        ai: aiStatus(),
-      });
-    const [p, ownJobs, sent, received] = await Promise.all([
-      db
-        .prepare("SELECT * FROM profiles WHERE user_id=?")
-        .bind(user.userId)
-        .first(),
-      db
-        .prepare(
-          "SELECT * FROM jobs WHERE owner_id=? ORDER BY created_at DESC LIMIT 100",
-        )
-        .bind(user.userId)
-        .all(),
-      db
-        .prepare(
-          "SELECT a.* FROM applications a WHERE a.candidate_id=? ORDER BY a.created_at DESC LIMIT 100",
-        )
-        .bind(user.userId)
-        .all(),
-      db
-        .prepare(
-          "SELECT a.* FROM applications a JOIN jobs j ON j.id=a.job_id WHERE j.owner_id=? ORDER BY a.created_at DESC LIMIT 100",
-        )
-        .bind(user.userId)
-        .all(),
-    ]);
-    const appRecord = async (a: Record<string, unknown>) => {
-      const j = await db
-        .prepare("SELECT * FROM jobs WHERE id=?")
-        .bind(a.job_id)
-        .first();
-      return {
-        id: a.id,
-        jobId: a.job_id,
-        status: a.status,
-        createdAt: a.created_at,
-        jobVersion: a.job_version,
-        snapshot: JSON.parse(String(a.snapshot)),
-        job: j ? publicJob(j) : null,
-      };
-    };
-    return json({
-      user: { name: user.displayName },
-      profile: p ? profileFromRow(p) : null,
-      jobs: [...currentJobs.results.map(publicJob), ...SAMPLE_JOBS],
-      myJobs: ownJobs.results.map(publicJob),
-      applications: await Promise.all(sent.results.map(appRecord)),
-      employerApplications: await Promise.all(received.results.map(appRecord)),
+    const guest = {
+      user: null,
+      profile: null,
+      jobs: SAMPLE_JOBS,
+      myJobs: [],
+      applications: [],
+      employerApplications: [],
       ai: aiStatus(),
+      auth: { configured: Boolean(supabaseConfig()) },
+    };
+    if (!supabaseConfig()) return json(guest);
+    const user = await currentUser();
+    const db = await database();
+    const jobs = await db.jobs();
+    if (!user)
+      return json({ ...guest, jobs: [...jobs.map(publicJob), ...SAMPLE_JOBS] });
+    const [profile, ownJobs, sent, received] = await Promise.all([
+      db.profile(user.userId),
+      db.ownJobs(user.userId),
+      db.sentApplications(user.userId),
+      db.receivedApplications(user.userId),
+    ]);
+    const jobIds = new Set([...sent, ...received].map((a) => a.job_id));
+    const relatedJobs = new Map(
+      await Promise.all(
+        [...jobIds].map(async (id) => [id, await db.job(id)] as const),
+      ),
+    );
+    const appRecord = (a: ApplicationRow) => ({
+      id: a.id,
+      jobId: a.job_id,
+      status: a.status,
+      createdAt: a.created_at,
+      jobVersion: a.job_version,
+      snapshot: a.snapshot,
+      job: relatedJobs.get(a.job_id)
+        ? publicJob(relatedJobs.get(a.job_id)!)
+        : null,
+    });
+    return json({
+      ...guest,
+      user: { name: user.displayName },
+      profile: profile ? profileFromRow(profile) : null,
+      jobs: [...jobs.map(publicJob), ...SAMPLE_JOBS],
+      myJobs: ownJobs.map(publicJob),
+      applications: sent.map(appRecord),
+      employerApplications: received.map(appRecord),
     });
   });
 }

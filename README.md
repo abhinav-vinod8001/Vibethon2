@@ -1,90 +1,115 @@
 # JobSathi
 
-A Malayalam-first hiring prototype: describe experience, confirm a profile, discover a vacancy, apply deliberately and let an employer review the submitted snapshot.
+A Malayalam-first hiring prototype: describe your experience, confirm a profile,
+discover local jobs, and apply deliberately. Employers review the profile snapshot
+submitted with each application and decide whom to contact.
 
-This codebase now runs on **standard Next.js and Node.js**, independently of OpenAI/Sites hosting. Platform scaffolding, Cloudflare bindings, Worker runtime, custom preview/install scripts and trusted identity headers have been removed.
-
-## Recommended hosting
-
-Use **Vercel + hosted libSQL + Google sign-in** for the first staging deployment. It fits the standard Next.js routes and preserves the current SQLite-compatible schema. The same app can run on a Node host such as Render or through the included Dockerfile. Use a remote database on serverless hosting; a local file there is not durable storage.
-
-No new infrastructure has been provisioned. Real database/OAuth/AI credentials and deployment verification are the next phase. See [deployment instructions](docs/DEPLOYMENT.md).
+**Stack: Next.js 16 + Supabase PostgreSQL + Supabase Auth.** Deploy the app on
+Vercel or another Node.js host. Google sign-in is configured inside Supabase.
 
 ## Start locally
 
-Use Node 22.13+ and pnpm 11.25.0. Run from the repository root:
+Use Node.js 22.13+ and pnpm 11.25.0.
 
-```sh
+```powershell
 pnpm install --frozen-lockfile
+if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
 ```
 
-Copy .env.example to .env.local. Keep the local database URL, generate NEXTAUTH_SECRET, and configure Google OAuth as described in the deployment guide. The development callback is http://localhost:3000/api/auth/callback/google.
+Fill in these values in `.env.local` (do not overwrite an existing populated file):
 
-```sh
-pnpm db:migrate
-pnpm dev
+```dotenv
+APP_URL=http://localhost:3000
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR-KEY
 ```
 
-Open http://localhost:3000. Public sample browsing works without OAuth, but saving profiles, posting and applying require a configured sign-in provider. AI features separately require Gemini/Sarvam credentials. Configuration status alone does not prove a real provider request succeeds.
+1. Create a Supabase project and copy the URL/publishable key from **Connect**.
+2. In **SQL Editor**, run
+   [the initial database script](supabase/migrations/202610250001_initial_schema.sql)
+   once on a fresh project. If you already ran that script, skip this step.
+3. Enable **Authentication → Sign In / Providers → Google**. Put your Google
+   Client ID/Secret there. Google's authorized redirect URI is the Supabase
+   callback shown in that screen: `https://YOUR-PROJECT.supabase.co/auth/v1/callback`.
+4. In Supabase **Authentication → URL Configuration**, set Site URL to
+   `http://localhost:3000` and allow `http://localhost:3000/auth/callback`.
+5. Run `pnpm dev` and open [localhost:3000](http://localhost:3000).
 
-## What works in source
+Without Supabase settings, the app opens a sample-only guest workspace. Saving,
+posting, and applying require sign-in. A configured but unreachable database
+returns an error rather than silently substituting sample records.
 
-- Candidate-confirmed profiles, employer vacancies and deliberate applications.
-- Submitted profile snapshots; manual shortlist/contact and candidate withdrawal.
-- Server ownership checks, vacancy versions, closure/deadline checks and duplicate prevention.
-- Labelled sample vacancies that cannot receive applications.
-- Keyword search, optional Gemini embeddings/extraction/grounded explanations and Sarvam transcription.
-- Standard Google OAuth configuration and encrypted session cookies; no header-based identity shortcut.
-- Local or hosted libSQL connection, repeatable checked migrations and a database health endpoint.
-- Resume PDF download from the saved profile, with English/Malayalam fonts, automatic pages and empty sections omitted.
+No Turso token, NextAuth secret, Supabase secret/admin key, or Google secret in
+the app environment is required. Only the publishable key is accepted. Sessions
+and Row Level Security (RLS) control which records each user can access.
 
-Skills are self-reported and quote containment is not proof of semantic correctness. Most UI text remains English. External job feeds, messaging, applicant ranking and automatic hiring decisions are not implemented. Real OAuth/provider flows need staging checks; account configuration is required.
+See [full deployment and key setup](docs/DEPLOYMENT.md). `.env.example` also lists
+optional Gemini/Sarvam settings and a migration-only database connection.
 
-## Download a resume
+## Implemented
 
-Sign in, create or edit your profile, and save it after confirmation. Open **My profile → Download resume PDF**. The download includes only the saved profile; unsaved form edits are excluded. An authenticated request to GET /api/profile/resume exports only the requesting user's record, regardless of query parameters. No generated PDF is retained on the server and no AI call is made.
+- Google login through Supabase, PKCE callback, HTTP-only cookies, session refresh,
+  server-verified identity, and local-session logout.
+- Confirmed profiles, employer jobs, candidate applications, immutable profile
+  snapshots, manual shortlist/contact updates, and candidate withdrawal.
+- Database access policies, checked write functions, duplicate prevention, job
+  versions, and closed/expired-job checks.
+- Clearly labelled sample jobs, keyword search, optional Gemini extraction,
+  semantic matching and source-quoted explanations, and Sarvam transcription.
+- Private PDF export from the saved profile, English/Malayalam fonts, omitted
+  empty sections, and automatic page breaks. No generated PDF is stored.
 
-The bundled Noto Sans Malayalam font supports English/Malayalam text. Long profiles continue onto additional pages. The source font license and documented fontkit compatibility patch are included. This is a readable resume export, not a validated claim of compatibility with every applicant tracking system.
+Job embeddings are generated on demand during semantic search. Durable embedding
+caching/indexing remains next-phase work; public write functions do not accept
+caller-supplied vectors. Most UI text is still English. Skills are self-reported;
+quote containment does not prove an AI interpretation is correct. External job
+feeds, messaging, resume uploads, and automated hiring decisions are not included.
 
 ## Structure
 
 ```text
-src/app/                 Next.js pages, API routes and global styles
-src/features/workspace/  Candidate/employer UI, client API helper, loading hook and feature types
-src/components/          Shared dialog and form field
-src/domain/              Pure matching, types, validation and samples
-src/server/              Verified identity, database, HTTP and AI adapters
-src/db/                  Drizzle schema
-drizzle/                 Versioned SQL migrations
-scripts/                 Migration runner
-tests/                   Matching and built-server integration checks
-public/                  Browser assets
-docs/                    Architecture, deployment, roadmap and preserved history
-evaluation/              Actual verification results and manual gates
-.github/workflows/       CI checks
+src/app/                 Pages, API handlers, and OAuth callback
+src/proxy.ts             Supabase session refresh
+src/features/workspace/  Candidate/employer interface and client helpers
+src/components/          Shared dialog and form fields
+src/domain/              Validation, matching, shared types, sample jobs
+src/server/              Supabase, auth, database, AI, HTTP, and PDF adapters
+supabase/migrations/     PostgreSQL tables, RLS policies, and write functions
+scripts/                 Optional checked PostgreSQL migration runner
+tests/                   Matching, database security, and built-server checks
+docs/                    Architecture, deployment, roadmap, historical archive
+evaluation/              Verification evidence and remaining staging checks
 ```
 
 ## Checks
 
-```sh
+```powershell
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm test:database
 pnpm build
 pnpm test:integration
 pnpm test:standalone
 ```
 
-Verified locally: TypeScript, lint, 6 matching tests, production build and 70 integration assertions pass in both standard and standalone servers. Integration starts the built Next.js server using a temporary database and signed synthetic sessions. It exercises actual routes without external OAuth or AI calls. [Verification results](evaluation/results.md) distinguish automated evidence from deployment/browser/provider checks.
+Database tests execute the actual SQL in PGlite PostgreSQL with a simulated Auth
+schema. Integration starts a built Next.js server and talks to a local simulated
+Supabase Auth/PostgREST gateway backed by the same PostgreSQL policies/functions.
+These checks need no cloud credentials and introduce no production auth bypass.
+They do not replace a real hosted Supabase/Google browser check.
 
-## Next work
+Locally verified: type checking, lint, production build, 6 matching tests,
+44 database checks, and 96 assertions in each built-server mode.
 
-1. **Staging:** configure host/database/Google OAuth, apply migrations, validate two-account hiring and real AI calls. Plan old D1 data/identity migration if records must be retained.
-2. **Profile reliability:** cancel stale AI/recording responses; add short guided Malayalam onboarding and split remaining workspace concerns.
-3. **Retrieval:** bound embedding requests, measure against keyword results and strengthen unknown/no-match presentation.
-4. **Original features:** validate the new resume download in staging, then consider one clearly attributed external feed.
-5. **Public launch:** deletion/retention, backups, provider spend limits, monitoring and accessibility.
+## Next phase
 
-The [next-phase plan](docs/NEXT_STEPS.md) includes two-person ownership and a two-hour staging schedule. [Architecture](docs/ARCHITECTURE.md) explains current boundaries; [deployment](docs/DEPLOYMENT.md) covers environment setup and Vercel/Node/Docker paths.
+Configure the staging project, deploy to Vercel, and verify sign-in, refresh,
+logout, two-account hiring, PDF downloads, and database persistence. Then validate
+real Gemini/Sarvam calls, bound embedding usage, and improve Malayalam onboarding.
+See [two-person staging plan](docs/NEXT_STEPS.md) and
+[verification results](evaluation/results.md).
 
-The original GitHub resume-builder review and requested older VoxPop summary are preserved under docs/archive. They describe historical versions, not the current hosting architecture. No live hosted records were moved; D1 identity mapping needs an explicit migration. Recovery snapshots of the pre-cleanup source and generated platform caches were saved outside this workspace.
+Existing SQLite/D1 accounts and records are not automatically imported. Back up
+the original database and map old identities to Supabase UUIDs before importing.
+Historical reviews remain in `docs/archive`; earlier versions remain in Git.

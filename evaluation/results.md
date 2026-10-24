@@ -1,54 +1,82 @@
-# Verification results — portable Next.js migration
+# Verification results — Supabase integration
 
-Updated 25 October 2026. These observations apply to the current local migration branch, codex/portable-hosting. The previous Sites/Worker results are historical and do not establish deployment validation for this version.
+Updated 25 October 2026. These observations apply to the local Supabase migration
+on `codex/portable-hosting`. Hosted infrastructure and external accounts were not
+provisioned by these checks.
 
-## Automated checks observed
+## Automated scope
 
-| Check | Result | Evidence / scope |
-| --- | --- | --- |
-| Frozen dependency install | PASS | pnpm 11.25.0, Node 22.19.0, updated lockfile; explicit build-script allowlist |
-| TypeScript | PASS | pnpm typecheck and production build type checking |
-| Lint | PASS | ESLint checked all source paths explicitly, plus scripts/tests/config |
-| Matching tests | PASS, 6/6 | pnpm test; filters/deadlines/keyword ranking/Malayalam tokens/cosine |
-| Standard Next.js production build | PASS | pnpm build; Next.js 16.3.4; standalone output |
-| Built-server integration | PASS, 70 assertions | pnpm test:integration; actual Next.js HTTP server, temporary libSQL/SQLite database, encrypted synthetic sessions |
-| Standalone server integration | PASS, 70 assertions | pnpm test:standalone; verifies packaged renderer and font work outside the source runtime |
-| PDF visual/text QA | PASS | Synthetic English/Malayalam profiles render as one page each; long profile spans three pages; every page visually inspected, fonts embedded, empty skills omitted and all 65 experience lines retained |
-| Documentation and cleanup | PASS | Local Markdown links checked; old runtime/scaffolding paths absent; direct packages reduced 44 to 18 |
-| CI and Docker configuration | Added, not executed remotely | GitHub Actions workflow and Dockerfile authored; container build/run not tested here |
+| Check | Result / scope |
+| --- | --- |
+| TypeScript | Pass: source and production build type checks |
+| ESLint | Pass: source, scripts, tests, Next.js config |
+| Matching unit tests | 6 pass: filters, expiry, keyword ranking, Malayalam tokens, cosine |
+| PostgreSQL security/workflow checks | 44 pass: actual migration executed in PGlite with simulated Supabase Auth identities |
+| Built Next.js integration | 96 assertions: actual HTTP routes, local simulated Auth/PostgREST gateway, real PostgreSQL policies/RPCs |
+| Standalone integration | 96 assertions pass against the packaged server, including PDF fonts and runtime Supabase settings |
+| Production build | Pass: Next.js 16.3.4, standalone output and session-refresh proxy |
+| CI and Docker | Configuration updated; remote CI and container execution not observed locally |
 
-Integration coverage includes repeated migrations, public page, auth provider discovery/CSRF/session/logout, profile confirmation, owner visibility, immutable application snapshot, duplicate/stale-version/closed-vacancy rejection, manual shortlist, withdrawal, cross-origin writes, keyword fallback, unconfigured AI behavior and invalid/expired session rejection. Former platform identity headers cannot authenticate a request. No production requests or external OAuth/AI calls were made by this suite.
+The integration suite tests PKCE sign-in URL/callback exchange, fixed return URL,
+failed login, verified user lookup, cookie metadata spoofing, token refresh,
+logout cookie clearing, cross-origin auth/write rejection, invalid/expired
+sessions, two-account workflows, immutable snapshots, duplicate and stale/closed
+applications, withdrawal rules, keyword fallback, AI-unconfigured behavior, PDF
+responses, configured database outages, and a separate process with no Supabase
+configuration. No test bypass exists in production source.
 
-## Still needs real staging validation
+Both server suites passed after a production build with the blank local template.
+This catches accidental build-time inlining of Supabase settings: the same build
+accepts the fixture's runtime settings and then serves the unconfigured sample
+workspace in another process. Runtime reads use Reflect rather than a process.env
+alias, which this Turbopack version otherwise inlined. A stale OneDrive build-cache
+directory was archived under the user's temporary directory before the clean
+build; generated temporary/output folders are excluded from TypeScript input.
 
-| Check | Status | Required observation |
-| --- | --- | --- |
-| Hosted database connectivity/persistence | Not tested | Records survive deployment/restart and remain isolated from preview data |
-| Google OAuth browser round trip | Not tested | Configured callback, sign-in, reload and sign-out for two real accounts |
-| Real Malayalam speech | Not tested | Editable accurate-enough transcript; names/numbers manually inspected |
-| Gemini generation/embeddings | Not tested | Actual working model names, supported skill evidence and returned semantic mode |
-| Browser/mobile/keyboard flow | Not tested | Post → confirm → apply → review → shortlist → withdraw; microphone denial/stop/cancel |
-| D1 record/identity migration | Not performed | Backups, explicit ID mapping, row counts, snapshots, ownership and rollback verified |
-| Docker build/run and remote CI | Not tested | Real container/CI checks pass on target environment |
+PGlite executes PostgreSQL, but the Auth service and the limited PostgREST HTTP
+surface are test fixtures. Tests do not establish compatibility with every hosted
+gateway feature, exercise real Google consent, prove distributed concurrency, or
+test a real TLS database connection. The optional migration runner's live hosted
+connection remains a staging check.
 
-## Five-query retrieval smoke log
+## PDF scope
 
-Use the same labelled vacancies, filters and candidate examples for keyword and semantic runs. A reviewer labels acceptable jobs before looking at results. Include a no-acceptable-result example; do not count keyword fallback as semantic success.
+The updated integration generates English, Malayalam and long-profile PDFs and
+checks owner-only export, query-parameter isolation, attachment/content type, and
+private/no-store headers. The PDF renderer/font were not changed by this database
+migration. Earlier visual/text QA inspected one-page English/Malayalam and a
+three-page long profile, embedded fonts, omitted empty skills, and retained the
+final experience line. Malayalam extraction may reorder combining characters;
+no universal ATS/parser compatibility is claimed.
 
-| Query / profile | Acceptable job IDs | Keyword top 3 | Semantic top 3 | Actual mode / notes |
-| --- | --- | --- | --- | --- |
-| 1 | — | — | — | Not run |
-| 2 | — | — | — | Not run |
-| 3 | — | — | — | Not run |
-| 4 | — | — | — | Not run |
-| 5: no acceptable match | None | — | — | Not run |
+## Required hosted staging checks
 
-Record observed counts, sample size, failures and request times only. This smoke evaluation does not establish hiring accuracy, fairness or general multilingual quality.
+- Apply SQL once in a fresh Supabase project; inspect RLS/grants and verify actual
+  publishable-key Data API and write RPC behavior.
+- Two real Google accounts: sign in, reload, refresh, sign out, complete hiring,
+  verify private records, reject stale/closed/expired/duplicate submissions, and
+  download each account's own PDF.
+- Verify persistence after Vercel redeployment and isolation from production data.
+- Exercise concurrent close/apply and duplicate application transactions on hosted
+  PostgreSQL. SQL uses a job lock and uniqueness constraint; local tests cover
+  the resulting rules but do not simulate multiple independent database clients.
+- Test real Gemini/Sarvam access, exact model IDs, provider quotas, Malayalam
+  recordings, evidence quality, and semantic versus keyword results.
+- Test mobile/keyboard flows, microphone denial/cancellation, and preserved edits.
+- Test optional TLS migration runner, Docker image, and GitHub Actions remotely.
+- Before any old-data import, back up SQLite/D1 and verify explicit identity
+  mapping, snapshots, ownership, counts, and rollback.
 
-## Recovery and scope
+## Retrieval smoke log
 
-Pre-migration tracked source was archived outside the workspace as jobsathi-before-portable-hosting-2026-10-24.zip. Old generated platform output/cache directories were moved to sibling jobsathi-platform-cache-2026-10-24. No live credentials, hosted records or provider accounts were migrated. Current code is local on the migration branch; the earlier published baseline remains in remote history.
+Label acceptable jobs before comparing keyword/semantic results. Include unrelated
+and no-match queries. Record actual mode, timings and observed failures; never
+count keyword fallback as semantic success. This evaluation has not been run
+against real providers and makes no hiring accuracy or fairness claim.
 
-## Resume feature verification
+## Recovery
 
-The expanded suite checks unauthenticated and missing-profile errors, caller-only export despite a different userId query, PDF content type/attachment, private no-store response, English/Malayalam/long-profile generation and existing hiring/auth behavior. Synthetic QA PDFs were rendered through Poppler and inspected; pypdf confirmed the correct profile owner, omitted empty section, retained final line and embedded fonts. Malayalam is visually rendered with shaping; machine text extraction may return reordered combining characters, so no general ATS/parser guarantee is claimed. Real OAuth/browser download on staging remains outstanding.
+Earlier implementations remain in Git history and historical reviews in
+`docs/archive`. Local `.data` databases were not deleted or automatically imported.
+No live accounts, credentials, or hosted records were migrated. Secrets remain in
+ignored environment files or deployment settings.

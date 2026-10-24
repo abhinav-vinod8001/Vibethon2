@@ -14,10 +14,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return route(async () => {
     const user = await identity();
-    const row = await database()
-      .prepare("SELECT * FROM profiles WHERE user_id=?")
-      .bind(user.userId)
-      .first();
+    const row = await (await database()).profile(user.userId);
     if (!row)
       throw new HttpError(
         404,

@@ -1,14 +1,14 @@
 # Next phases
 
-The platform cleanup replaces Sites/Vinext/Workers/D1 bindings with standard Next.js, configurable Google sessions and a local-or-hosted libSQL connection. This makes the application independent of the former hosting runtime. It does not provision a host, migrate existing accounts/data or prove AI quality.
+The code now uses standard Next.js, Supabase PostgreSQL, and Supabase Auth with Google sign-in. The SQL migration includes RLS policies and checked write functions. Local tests simulate Supabase Auth/PostgREST over real PostgreSQL; they do not provision a host, validate Google accounts, migrate old records, or prove AI quality.
 
 ## Phase 1 — configure and prove a staging deployment (next)
 
 | Owner A: application and deployment | Owner B: integrations and evidence |
 | --- | --- |
-| Create staging host/database; configure production environment and Google OAuth callback; run migrations; verify health and two-account access | Configure Gemini generation/embeddings and Sarvam; perform real Malayalam recordings and record successful models/failures |
+| Create Vercel staging and Supabase project; apply initial SQL once; configure APP_URL, publishable key, Google provider and redirects; verify health and two-account access | Configure Gemini generation/embeddings and Sarvam; perform real Malayalam recordings and record successful models/failures |
 | Complete employer posting, profile confirmation, application, snapshot review, manual shortlist and withdrawal | Inspect skill evidence, unrelated retrieval and missing-benefit answers; verify typing/keyword fallbacks |
-| If old data matters, back up/export D1 and agree an explicit identity migration | Compare counts/snapshots/ownership after staged import; do not assume old/new identity IDs match |
+| If old data matters, back up/export SQLite/D1 and map old IDs to Supabase UUIDs explicitly | Compare counts/snapshots/ownership after staged import; do not assume old/new identity IDs match |
 
 **Gate:** two actual accounts complete the hiring journey on the chosen host; database records survive redeployment; logout works; unauthorized access fails; real provider results and limitations are recorded. This is the next need, before adding product features.
 
@@ -16,7 +16,7 @@ The platform cleanup replaces Sites/Vinext/Workers/D1 bindings with standard Nex
 
 | Elapsed | Person A | Person B | Checkpoint |
 | --- | --- | --- | --- |
-| 0–15 min | Configure staging database, host and OAuth URL | Verify provider keys/model access; prepare a short Malayalam sample | Environment accessible; no secret committed |
+| 0–15 min | Configure Supabase project/Google provider, Vercel host and trusted app/callback URLs | Verify provider keys/model access; prepare a short Malayalam sample | Environment accessible; no secret committed |
 | 15–40 min | Apply migrations, deploy, check health and login/logout | Test real speech, extraction and embeddings separately | Actual provider outcomes recorded |
 | 40–75 min | Two-account post → confirm → apply → shortlist; verify reload and withdrawal | Review sources, unknown accommodation, unrelated query, filters and fallback | Core flow proven; defects assigned |
 | 75–100 min | Fix the highest-impact deployment/transaction issue; integrate | Five labelled queries against the same vacancies; inspect unsupported skill inference | Evidence log filled; no new feature scope |

@@ -32,21 +32,13 @@ export async function POST(request: Request) {
         includeSamples: z.boolean().default(true),
       })
       .parse(await body(request));
-    const db = database();
-    const rows = await db
-      .prepare(
-        "SELECT * FROM jobs WHERE status='active' AND (deadline='' OR deadline>=?) ORDER BY created_at DESC LIMIT 200",
-      )
-      .bind(new Date().toISOString().slice(0, 10))
-      .all();
+    const db = await database();
+    const rows = await db.jobs();
     const jobs = filterJobs(
-      [...rows.results.map((r) => publicJob(r) as Job), ...SAMPLE_JOBS],
+      [...rows.map((r) => publicJob(r) as Job), ...SAMPLE_JOBS],
       input,
     );
-    const p = await db
-      .prepare("SELECT * FROM profiles WHERE user_id=?")
-      .bind(user.userId)
-      .first();
+    const p = await db.profile(user.userId);
     const query =
       input.query || (p ? profileText(profileFromRow(p) as Profile) : "");
     let mode = "keyword";
@@ -61,19 +53,12 @@ export async function POST(request: Request) {
         // Exact vector search is intentional for this small prototype. No ANN scaling claims.
         const vectors = await Promise.all(
           jobs.map(async (job) => {
-            const row = rows.results.find((r) => r.id === job.id);
+            const row = rows.find((r) => r.id === job.id);
             let vector: number[];
             if (row?.embedding && row.embedding_model === model) {
-              vector = JSON.parse(String(row.embedding));
+              vector = z.array(z.number().finite()).parse(row.embedding);
             } else {
               vector = await embed(jobText(job));
-              if (row)
-                await db
-                  .prepare(
-                    "UPDATE jobs SET embedding=?,embedding_model=? WHERE id=? AND version=?",
-                  )
-                  .bind(JSON.stringify(vector), model, job.id, job.version)
-                  .run();
             }
             return { job, score: cosine(q, vector) };
           }),

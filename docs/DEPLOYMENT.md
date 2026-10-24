@@ -1,96 +1,126 @@
-# Deployment and configuration
+# Deployment and environment setup
 
-## Recommended first deployment
+Use Vercel for Next.js and Supabase for PostgreSQL and Google authentication.
+Node/Docker hosting works with the same remote Supabase project. No local database
+file or persistent app disk is needed.
 
-Use **Vercel + hosted libSQL + Google sign-in** for the current application. Vercel directly supports standard Next.js; a remote database keeps data independent of serverless filesystems. This minimizes changes to the existing SQLite schema. Render or another Node host is an alternative when you need a long-running service or Docker.
+## Supabase setup
 
-This recommendation concerns implementation fit, not a guarantee of free hosting or a fixed bill. Check the selected account's limits and charges before provisioning. No infrastructure has been provisioned or deployed by this cleanup.
+1. Open the [Supabase dashboard](https://supabase.com/dashboard), create a project
+   named `jobsathi-staging`, select a suitable nearby region, and save its database
+   password in a password manager.
+2. Open **Connect** and copy Project URL and the `sb_publishable_...` key.
+   Specific keys are also listed under **Settings → API Keys**. The app deliberately
+   rejects secret/admin and legacy keys.
+3. Open **SQL Editor → New query**. Run
+   [the initial migration](../supabase/migrations/202610250001_initial_schema.sql)
+   once as administrator on the fresh project. If already applied, do not rerun.
+   Table Editor should show profiles, jobs, and applications with RLS enabled.
+4. Create/edit a web OAuth client in [Google Cloud Console](https://console.cloud.google.com/).
+   Configure branding/audience, basic openid/email/profile scopes, and test users
+   while the consent screen is in testing. Add
+   `https://YOUR-PROJECT.supabase.co/auth/v1/callback` as the authorized redirect URI.
+   Copy the exact callback from Supabase's Google provider screen.
+5. Under Supabase **Authentication → Sign In / Providers → Google**, enable Google
+   and save the Google Client ID and Client Secret. They belong here, not in the
+   app's `.env.local` or Vercel environment.
+6. Under **Authentication → URL Configuration**, initially set Site URL to
+   `http://localhost:3000` and add `http://localhost:3000/auth/callback` to Redirect
+   URLs. For staging, set Site URL to the stable HTTPS domain and allow its
+   `/auth/callback` URL too. Keep the local callback if developing against staging.
 
-References: [Next.js on Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs), [Render Next.js web services](https://render.com/docs/deploy-nextjs-app), [libSQL TypeScript client](https://docs.turso.tech/sdk/ts/reference), [Google provider setup](https://next-auth.js.org/providers/google).
+These are two different redirects: Google returns to Supabase's `/auth/v1/callback`;
+Supabase then returns to the app's `/auth/callback`, which exchanges the PKCE code.
+The application ignores caller-supplied redirect destinations.
 
-## Local setup
-
-Use Node 22.13+ and pnpm 11.25.0. Run from the repository root:
-
-```sh
-pnpm install --frozen-lockfile
-```
-
-Copy .env.example to .env.local. For PowerShell:
-
-```powershell
-Copy-Item .env.example .env.local
-node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
-```
-
-Set the generated value as NEXTAUTH_SECRET. Keep DATABASE_URL=file:.data/jobsathi.db and NEXTAUTH_URL=http://localhost:3000 locally. Configure a Google OAuth web application with callback http://localhost:3000/api/auth/callback/google and set GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET. Do not use the GitHub CLI authentication credential as an application secret.
-
-```sh
-pnpm db:migrate
-pnpm dev
-```
-
-The migration runner loads .env.local/.env; environment variables already supplied by the process take precedence. Never commit real environment files. Sign-in remains unavailable until OAuth credentials are configured; public sample browsing and API configuration checks do not require a user session.
+References: [API keys](https://supabase.com/docs/guides/getting-started/api-keys),
+[Google setup](https://supabase.com/docs/guides/auth/social-sign-in/auth-google),
+[redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls),
+[Next.js sessions](https://supabase.com/docs/guides/auth/server-side/nextjs).
 
 ## Environment variables
 
-| Variable | Required | Meaning |
-| --- | --- | --- |
-| DATABASE_URL | Production | Hosted libSQL connection URL, or a persistent local file on a stateful Node host |
-| DATABASE_AUTH_TOKEN | Hosted database if required | Server-side database credential |
-| NEXTAUTH_URL | Interactive auth | Canonical public HTTPS app URL; localhost HTTP for development |
-| NEXTAUTH_SECRET | Interactive/protected auth | Strong random application session secret; keep stable across instances |
-| GOOGLE_CLIENT_ID | Google sign-in | OAuth client ID |
-| GOOGLE_CLIENT_SECRET | Google sign-in | OAuth client secret |
-| GEMINI_API_KEY / GEMINI_MODEL | AI generation | Account-accessible structured-output model |
-| GEMINI_EMBEDDING_MODEL | Optional | Embedding model override |
-| SARVAM_API_KEY / SARVAM_MODEL | Speech / optional model | Speech recognition credential/model |
+Copy `.env.example` to `.env.local` for development and fill it in. Never commit
+`.env.local`. In Vercel use **Project → Settings → Environment Variables** and
+select the deployment environment. Redeploy after changing settings.
 
-All variables above are server-side. Do not prefix credentials with NEXT_PUBLIC_. Separate production/staging databases and OAuth registrations. Avoid sharing a production database with preview builds.
+| Variable | Purpose |
+| --- | --- |
+| `APP_URL` | Trusted application origin: `http://localhost:3000` locally; stable HTTPS staging domain on the host |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL from Connect |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key, paired with verified user sessions and RLS |
+| `SUPABASE_DB_URL` | Optional CLI migration connection; use Connect → Session pooler and URL-encode the database password |
+| `GEMINI_API_KEY` | Optional server-only Google AI Studio key for AI features |
+| `GEMINI_MODEL` | Exact supported text model ID; required with the Gemini key for generation |
+| `GEMINI_EMBEDDING_MODEL` | Embedding model; defaults to `gemini-embedding-001` |
+| `SARVAM_API_KEY` | Optional server-only speech transcription credential |
+| `SARVAM_MODEL` | Speech model; defaults to `saaras:v3` |
 
-## Vercel release
+The Next.js server reads Supabase settings at runtime, including in standalone
+Docker. The conventional `NEXT_PUBLIC_` names identify non-secret connection
+settings; no Supabase browser SDK is currently needed because the UI uses Next.js
+routes. Cookies are HTTP-only, SameSite=Lax, and Secure when APP_URL is HTTPS.
+Use the same hostname as APP_URL when opening the local application.
 
-1. Create the hosted libSQL database and save its connection URL/token in deployment secrets.
-2. Import the GitHub project into Vercel as a Next.js project. Use pnpm install --frozen-lockfile and pnpm build; use the default Next.js output handling.
-3. Set the environment variables. Set NEXTAUTH_URL to the final HTTPS domain and register https://YOUR_DOMAIN/api/auth/callback/google in Google OAuth.
-4. Apply pnpm db:migrate once in a trusted release environment using the target database credentials. Do not run migrations concurrently from every preview/deployment instance.
-5. Deploy, check /api/health, then test two separate accounts through post → confirm → apply → shortlist → withdraw.
-6. Validate real Gemini/Sarvam calls and record model names, failure behavior and observations.
+## Optional migration runner
 
-## Node or Docker alternative
+Choose **SQL Editor or this runner** for the initial migration, not both. With a
+fresh Supabase project and `SUPABASE_DB_URL` set, run:
 
-```sh
-pnpm build
-pnpm start
+```powershell
+pnpm db:migrate
 ```
 
-The standard server listens on PORT. The included Dockerfile builds Next.js standalone output and runs as an unprivileged user:
+It requires a TLS session-pooler PostgreSQL connection and records normalized
+checksums in a private `jobsathi_migrations` schema. A transaction/advisory lock
+protects migration application; unchanged migrations are skipped and changed
+applied files are rejected. Do not run migrations during normal web requests.
+The SQL Editor method does not create this runner's migration ledger; if you
+already used the editor, skip the runner and apply later SQL changes deliberately.
 
-```sh
+Never put the database password or a Supabase admin key in a `NEXT_PUBLIC_` variable.
+The web deployment does not require the migration connection or an admin key.
+
+## Vercel staging
+
+1. Import the GitHub repository as a staging project. Use Node 22, pnpm's lockfile,
+   and the detected Next.js preset. Supabase migrations must be applied first.
+2. Set APP_URL and the two Supabase connection settings, plus optional provider
+   settings. Use a separate database/project for production later.
+3. Add the stable staging callback to Supabase's Redirect URLs and redeploy.
+4. Check `/api/health`: it should return 200 with database ready. Missing config
+   or a failed database query returns 503. This is not a Google/AI health check.
+5. Complete the two-account acceptance checks below before calling staging ready.
+
+Use a stable staging domain for auth. Random preview domains need deliberate
+configuration and separate data/environment settings. No infrastructure has been
+provisioned by the source migration itself.
+
+## Node and Docker
+
+For Node use `pnpm build` then `pnpm start` with runtime environment variables.
+For Docker:
+
+```powershell
 docker build -t jobsathi .
-docker run --rm --env-file .env.production jobsathi node scripts/migrate.mjs
-docker run --rm -p 3000:3000 --env-file .env.production jobsathi
+docker run --rm -p 3000:3000 --env-file .env.local jobsathi
 ```
 
-Use remote database credentials in these examples. A file database instead requires a writable persistent volume mounted at the same path for migration and app containers. Terminate HTTPS at the host/reverse proxy and set the canonical NEXTAUTH_URL. Docker configuration is provided; an actual container build/run must be checked on a Docker-enabled machine.
+Apply migrations separately before starting the container. The image includes
+the standalone Next.js output, public/static assets, and traced PDF font. It does
+not include environment files. Docker build/run needs its own target-host check.
 
-## Existing D1 data and identities
+## Acceptance checks
 
-No existing hosted records or credentials were accessed or moved. Export and back up D1 before migration. Create a fresh target schema, import compatible application data and explicitly map old ChatGPT owner/candidate IDs to the new authenticated identities. Do not silently match accounts by email or reuse synthetic test IDs. Verify row counts, snapshots, ownership and rollback on staging first. The migration runner is not a D1 export/import tool or an existing-schema baselining tool.
+- Two real Google accounts can sign in, reload, refresh sessions, and sign out.
+- Candidate confirms/saves a profile and downloads the correct PDF.
+- Employer posts a job; candidate applies once; duplicate submission is rejected.
+- Employer sees only their applicants; an unrelated account sees neither private
+  profiles nor applications. Database policies also reject direct unauthorized API calls.
+- Profile edits do not change submitted snapshots. Close/reopen changes job
+  version; stale/closed/expired submissions fail. Withdrawal cannot be reversed.
+- Records survive a redeploy. Check real Gemini and Sarvam requests separately;
+  configured values alone do not establish provider access or output quality.
 
-## Release checks
-
-```sh
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm test:integration
-pnpm test:standalone
-```
-
-Integration starts a real built Next.js server with a temporary local libSQL database and signed synthetic sessions. It verifies hiring behavior and rejects forged/expired sessions without making OAuth or AI provider requests. Hosted database connectivity, real Google login, deployment routing and provider quality require staging verification.
-
-## Resume PDF packaging
-
-PDF export uses bundled font assets and PDFKit; it does not require a remote rendering service or an AI key. Keep assets/fonts and patches in the source checkout. next.config.ts explicitly traces fonts into the resume route; the Docker dependency stage copies patches before the frozen install. The standalone test exercises the same authenticated PDF endpoint from the packaged server, confirming the renderer and font are available. An actual Docker build/run and staging browser download still need environment-level verification.
+Before importing old SQLite/D1 data, back it up and map each old identity to the
+correct Supabase UUID. Do not link accounts by an unverified email address.
