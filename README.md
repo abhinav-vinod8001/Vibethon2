@@ -162,5 +162,5 @@ Existing SQLite/D1 accounts and records are not automatically imported. Back up
 the original database and map old identities to Supabase UUIDs before importing.
 Historical reviews remain in `docs/archive`; earlier versions remain in Git.
 
-<!-- Vercel build sync trigger -->
+<!-- Vercel sync trigger -->
 
