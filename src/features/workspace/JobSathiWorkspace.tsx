@@ -36,6 +36,7 @@ import { ResumeDownload } from "./ResumeDownload";
 import { ResumeWizard } from "@/features/resume/ResumeWizard";
 import { useLanguage } from "@/features/language/LanguageProvider";
 import { LanguageSwitcher } from "@/features/language/LanguageSwitcher";
+import { ROLE_COOKIE, type EntryRole } from "@/features/language/role";
 import { CATEGORIES, type Application, type Job } from "@/domain/types";
 import { filterJobs, keywordScore } from "@/domain/matching";
 
@@ -74,14 +75,29 @@ const categoryIcon = (category: string) =>
     <Building2 />
   );
 
-export default function JobSathi() {
+export default function JobSathi({
+  initialRole = "candidate",
+}: {
+  initialRole?: EntryRole;
+}) {
   const { locale, t } = useLanguage();
   const searchRequest = useRef<AbortController | null>(null);
+  const jobTranslationRequest = useRef<AbortController | null>(null);
+  const [jobTranslation, setJobTranslation] = useState<{
+    locale: string;
+    jobId: string;
+    version: number;
+    title: string;
+    description: string;
+    requirements: string;
+  } | null>(null);
+  const [translationBusy, setTranslationBusy] = useState(false);
   const [searchAnswer, setSearchAnswer] = useState<{
     locale: string;
     answer: RagAnswer;
   } | null>(null);
   useEffect(() => () => searchRequest.current?.abort(), [locale]);
+  useEffect(() => () => jobTranslationRequest.current?.abort(), [locale]);
   const [explanationLocale, setExplanationLocale] = useState(locale);
   const [applicantSummaryLocale, setApplicantSummaryLocale] = useState(locale);
   const [summaryApplicationId, setSummaryApplicationId] = useState("");
@@ -90,10 +106,10 @@ export default function JobSathi() {
     source: string;
     status?: string;
   } | null>(null);
-  const [workspace, setWorkspace] = useState<"candidate" | "employer">(
-    "candidate",
-  );
-  const [view, setView] = useState("discover"),
+  const [workspace, setWorkspace] = useState<EntryRole>(initialRole);
+  const [view, setView] = useState(
+      initialRole === "employer" ? "overview" : "discover",
+    ),
     [query, setQuery] = useState(""),
     [location, setLocation] = useState(""),
     [category, setCategory] = useState(""),
@@ -168,6 +184,7 @@ export default function JobSathi() {
     setSelected(null);
   };
   const switchWorkspace = (next: "candidate" | "employer") => {
+    document.cookie = `${ROLE_COOKIE}=${next}; Path=/; Max-Age=31536000; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
     setWorkspace(next);
     setView(next === "candidate" ? "discover" : "overview");
     setError("");
@@ -247,11 +264,48 @@ export default function JobSathi() {
     }
   };
   const showJob = (job: Job) => {
+    jobTranslationRequest.current?.abort();
+    setTranslationBusy(false);
+    setJobTranslation(null);
     setSelected(job);
     setExplanation(null);
     setDetailError("");
     setConsent(false);
     setQuestion("");
+    if (locale !== "en") void translateJob(job);
+  };
+  const translateJob = async (requestedJob: Job | null = selected) => {
+    if (!requestedJob || locale === "en") return;
+    jobTranslationRequest.current?.abort();
+    const controller = new AbortController();
+    jobTranslationRequest.current = controller;
+    const job = requestedJob;
+    const requestLocale = locale;
+    setTranslationBusy(true);
+    try {
+      const result = await api<{
+        title: string;
+        description: string;
+        requirements: string;
+        translated: boolean;
+      }>("/api/jobs/translate", {
+        method: "POST",
+        signal: controller.signal,
+        body: JSON.stringify({ jobId: job.id, locale: requestLocale }),
+      });
+      if (!controller.signal.aborted && result.translated)
+        setJobTranslation({
+          ...result,
+          locale: requestLocale,
+          jobId: job.id,
+          version: job.version,
+        });
+    } catch {
+      // Original employer wording remains visible if translation fails.
+    } finally {
+      if (jobTranslationRequest.current === controller)
+        setTranslationBusy(false);
+    }
   };
   const explain = async () => {
     if (!selected) return;
@@ -399,6 +453,13 @@ export default function JobSathi() {
   const appliedIds = new Set(data?.applications.map((a) => a.jobId));
   const profile = data?.profile;
   const completed = profile ? Object.values(profile).filter(Boolean).length : 0;
+  const shownTranslation =
+    selected &&
+    jobTranslation?.locale === locale &&
+    jobTranslation.jobId === selected.id &&
+    jobTranslation.version === selected.version
+      ? jobTranslation
+      : null;
 
   return (
     <div className="app-shell">
@@ -889,7 +950,9 @@ export default function JobSathi() {
                                     )}
                                   </div>
                                   <button onClick={() => showJob(job)}>
-                                    <h3>{job.title}</h3>
+                                    <h3>
+                                      {job.sample ? t(job.title) : job.title}
+                                    </h3>
                                   </button>
                                   <div className="job-meta">
                                     <span>
@@ -911,7 +974,9 @@ export default function JobSathi() {
                                 </button>
                               </div>
                               <p className="job-description">
-                                {job.description}
+                                {job.sample
+                                  ? t(job.description)
+                                  : job.description}
                               </p>
                               <div className="job-card-bottom">
                                 <div className="tags">
@@ -1458,12 +1523,34 @@ export default function JobSathi() {
                   <span className="sample-label">{t("SAMPLE")}</span>
                 )}
               </div>
-              <h2>{selected.title}</h2>
+              <h2>
+                {shownTranslation?.title ||
+                  (selected.sample ? t(selected.title) : selected.title)}
+              </h2>
               <p>
                 {selected.location} · {t(selected.type)}
               </p>
             </div>
           </div>
+          {locale !== "en" && (
+            <div className="job-translation-controls">
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => void translateJob()}
+                disabled={translationBusy}
+              >
+                {translationBusy
+                  ? t("Translating job details…")
+                  : t("Translate job details")}
+              </button>
+              {shownTranslation && (
+                <small>
+                  {t("AI translation · original wording available below")}
+                </small>
+              )}
+            </div>
+          )}
           <div className="detail-facts">
             <div>
               <small>{t("MONTHLY PAY")}</small>
@@ -1480,12 +1567,32 @@ export default function JobSathi() {
           </div>
           <section className="detail-section">
             <h3>{t("The work")}</h3>
-            <p>{selected.description}</p>
+            <p>
+              {shownTranslation?.description ||
+                (selected.sample
+                  ? t(selected.description)
+                  : selected.description)}
+            </p>
           </section>
           <section className="detail-section">
             <h3>{t("What the employer is looking for")}</h3>
-            <p>{selected.requirements}</p>
+            <p>
+              {shownTranslation?.requirements ||
+                (selected.sample
+                  ? t(selected.requirements)
+                  : selected.requirements)}
+            </p>
           </section>
+          {shownTranslation && (
+            <details className="job-original">
+              <summary>{t("Original wording")}</summary>
+              <p>
+                <strong>{selected.title}</strong>
+              </p>
+              <p>{selected.description}</p>
+              <p>{selected.requirements}</p>
+            </details>
+          )}
           <div className="rag-panel">
             <div className="rag-heading">
               <Sparkles size={19} />

@@ -3,6 +3,7 @@ import { onboardingDictionary } from "./dictionaries/onboarding.ts";
 import { workspaceDictionary } from "./dictionaries/workspace.ts";
 import type { Locale } from "./languages";
 import { RAG_SOURCE_TEXT } from "./rag-sources.ts";
+import { SAMPLE_JOBS } from "../domain/samples.ts";
 
 export type LanguageChoice = {
   code: Locale;
@@ -18,6 +19,9 @@ const entrySources = [
   "Choose a language to get started. You can change it at any time.",
   "Change language",
   "Welcome to JobSathi",
+  "Choose how you want to continue",
+  "Employee",
+  "Employer",
   "Find work. Share your experience.",
   "Sign in",
   "Sign in to save your resume, apply for jobs, or hire people.",
@@ -42,6 +46,15 @@ const bundleSources: Record<TranslationBundle, readonly string[]> = {
       ...Object.keys(workspaceDictionary),
       ...Object.keys(commonDictionary),
       ...RAG_SOURCE_TEXT,
+      ...SAMPLE_JOBS.flatMap((job) => [
+        job.title,
+        job.description,
+        job.requirements,
+      ]),
+      "Translate job details",
+      "Translating job details…",
+      "AI translation · original wording available below",
+      "Original wording",
     ]),
   ]
     .filter((source) => !entry.has(source) && !resume.has(source))

@@ -3140,6 +3140,260 @@ html:not([lang="en"]) .nav-item {
     font-size: 29px;
   }
 }
+
+/* Entry keeps the original palette while giving every script enough room. */
+.onboarding-shell {
+  background:
+    radial-gradient(circle at 12% 72%, #e8f1e6 0, transparent 35%), var(--paper);
+}
+.entry-frame {
+  width: min(100%, 1030px);
+  margin: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  overflow: hidden;
+  border: 1px solid #dce7da;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 26px 70px #173c2717;
+}
+.entry-showcase {
+  position: relative;
+  isolation: isolate;
+  min-height: 420px;
+  padding: 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  background: linear-gradient(148deg, #174b39, #287454);
+  color: #fff;
+}
+.entry-showcase::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 310px;
+  height: 310px;
+  border: 1px solid #ffffff32;
+  border-radius: 50%;
+  right: -110px;
+  bottom: -118px;
+  box-shadow:
+    0 0 0 48px #ffffff0c,
+    0 0 0 98px #ffffff09;
+}
+.entry-showcase-mark {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ffffff5b;
+  border-radius: 15px;
+  background: #ffffff1c;
+}
+.entry-showcase-eyebrow {
+  color: #cfdfc9;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.2em;
+}
+.entry-showcase h2 {
+  max-width: 390px;
+  margin: 14px 0 14px;
+  font-family: Georgia, serif;
+  font-size: clamp(30px, 3.7vw, 48px);
+  font-weight: 400;
+  line-height: 1.17;
+  overflow-wrap: anywhere;
+}
+.entry-showcase p {
+  margin: 0;
+  color: #e0efdc;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.entry-frame .onboarding-card {
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 44px 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.entry-frame .entry-heading {
+  text-align: left;
+  margin-bottom: 23px;
+}
+.entry-frame .entry-heading h1 {
+  font-size: clamp(22px, 2.5vw, 30px);
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.entry-frame .entry-heading p {
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.entry-frame .language-options {
+  gap: 10px;
+}
+.entry-frame .language-option {
+  min-height: 118px;
+  padding: 15px 7px;
+  cursor: pointer;
+}
+.entry-frame .language-option strong {
+  max-width: 100%;
+  font-size: clamp(16px, 1.7vw, 21px);
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.entry-frame .language-option small {
+  max-width: 100%;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.entry-frame .language-option:hover,
+.entry-role:hover {
+  transform: translateY(-2px);
+  border-color: #79a47c;
+  box-shadow: 0 7px 16px #194c2720;
+}
+.entry-roles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.entry-role {
+  min-width: 0;
+  min-height: 106px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 15px;
+  border: 1px solid #dce6d9;
+  border-radius: 11px;
+  color: var(--green-dark);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.entry-role.selected {
+  border-color: var(--green);
+  background: #edf5ea;
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.entry-role span {
+  display: grid;
+  min-width: 0;
+}
+.entry-role strong {
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.entry-role small {
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.entry-frame .onboarding-actions {
+  gap: 10px;
+}
+.entry-frame .onboarding-actions .button.primary {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
+}
+.entry-frame .onboarding-actions .button.primary:hover {
+  background: var(--green-dark);
+  color: #fff;
+}
+.entry-frame .onboarding-actions .button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.entry-frame .entry-back {
+  margin: 0 0 18px;
+  align-self: flex-start;
+}
+.entry-frame .entry-browse {
+  min-height: 38px;
+}
+.question-card,
+.job-card,
+.full-card,
+.profile-card,
+.stat-card,
+.floating-card,
+.job-title,
+.job-description,
+.nav-item,
+.hero h1,
+.hero-copy p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .onboarding-shell {
+    padding: 18px 16px 32px;
+  }
+  .entry-frame {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 530px;
+  }
+  .entry-showcase {
+    min-height: 145px;
+    padding: 22px 26px;
+  }
+  .entry-showcase-mark {
+    display: none;
+  }
+  .entry-showcase h2 {
+    max-width: 470px;
+    margin: 7px 0;
+    font-size: 26px;
+  }
+  .entry-showcase p {
+    font-size: 12px;
+  }
+  .entry-frame .onboarding-card {
+    padding: 26px 24px 28px;
+  }
+  .entry-frame .language-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .entry-frame .language-option,
+  .entry-frame .language-option:nth-child(4),
+  .entry-frame .language-option:nth-child(5) {
+    grid-column: auto;
+    min-height: 92px;
+  }
+  .entry-frame .language-option:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 370px) {
+  .entry-frame .onboarding-card {
+    padding: 22px 16px;
+  }
+  .entry-role {
+    padding: 11px;
+  }
+  .entry-showcase h2 {
+    font-size: 23px;
+  }
+}
 @media (max-width: 600px) {
   .topbar {
     height: auto;
@@ -3159,4 +3413,27 @@ html:not([lang="en"]) .nav-item {
   .workspace-switch button {
     min-height: 38px;
   }
+}
+.job-translation-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.job-translation-controls small {
+  color: var(--muted);
+}
+.job-original {
+  margin: 12px 0 20px;
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow-wrap: anywhere;
+}
+.job-original summary {
+  cursor: pointer;
+  color: var(--green-dark);
+  font-weight: 650;
 }
