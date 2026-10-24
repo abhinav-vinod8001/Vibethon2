@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,6 +42,17 @@ assert.ok(
   trace.files.some((file) => basename(file).endsWith(".ttf")),
   "PDF font must remain traced in adapter builds.",
 );
+const styles = await Promise.all(
+  (await readdir(".next/static", { recursive: true }))
+    .filter((file) => file.endsWith(".css"))
+    .map((file) => readFile(resolve(".next/static", file), "utf8")),
+);
+assert.ok(
+  styles.some(
+    (css) => css.includes(".entry-frame") && css.includes(".entry-role"),
+  ),
+  "The Vercel build must include the onboarding layout and role-button styles.",
+);
 console.log(
-  "PASS: Vercel-mode adapter build, default output, and traced PDF font.",
+  "PASS: Vercel-mode adapter build, onboarding CSS, and traced PDF font.",
 );

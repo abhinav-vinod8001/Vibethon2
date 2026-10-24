@@ -82,7 +82,7 @@ export function WorkspaceEntry({
           <div className="entry-showcase-mark">
             <Handshake size={29} />
           </div>
-          <div>
+          <div className="entry-showcase-copy">
             <span className="entry-showcase-eyebrow">JOBSATHI</span>
             <h2>{t("Your experience. Your next opportunity.")}</h2>
             <p>{t("Find work. Share your experience.")}</p>
@@ -170,25 +170,37 @@ export function WorkspaceEntry({
                       type="button"
                       className={`entry-role ${role === "candidate" ? "selected" : ""}`}
                       onClick={() => chooseRole("candidate")}
-                      aria-pressed={role === "candidate"}
                     >
-                      <UserRound size={21} aria-hidden="true" />
-                      <span>
+                      <span className="entry-role-icon">
+                        <UserRound size={21} aria-hidden="true" />
+                      </span>
+                      <span className="entry-role-copy">
                         <strong>{t("Employee")}</strong>
                         <small>{t("Find jobs")}</small>
                       </span>
+                      <ArrowRight
+                        className="entry-role-arrow"
+                        size={18}
+                        aria-hidden="true"
+                      />
                     </button>
                     <button
                       type="button"
                       className={`entry-role ${role === "employer" ? "selected" : ""}`}
                       onClick={() => chooseRole("employer")}
-                      aria-pressed={role === "employer"}
                     >
-                      <BriefcaseBusiness size={21} aria-hidden="true" />
-                      <span>
+                      <span className="entry-role-icon">
+                        <BriefcaseBusiness size={21} aria-hidden="true" />
+                      </span>
+                      <span className="entry-role-copy">
                         <strong>{t("Employer")}</strong>
                         <small>{t("Post a job")}</small>
                       </span>
+                      <ArrowRight
+                        className="entry-role-arrow"
+                        size={18}
+                        aria-hidden="true"
+                      />
                     </button>
                   </div>
                 </>
