@@ -28,10 +28,20 @@ export async function POST(request: Request) {
       : file.type.includes("ogg")
         ? "ogg"
         : "webm";
-    data.set("file", file, `answer.${extension}`);
+    const cleanType =
+      extension === "m4a"
+        ? "audio/mp4"
+        : extension === "ogg"
+          ? "audio/ogg"
+          : "audio/webm";
+    const bytes = await file.arrayBuffer();
+    const cleanFile = new File([bytes], `answer.${extension}`, {
+      type: cleanType,
+    });
+    data.set("file", cleanFile);
     data.set("language_code", language);
     data.set("mode", "transcribe");
-    data.set("model", model || "saaras:v3");
+    data.set("model", model || "saaras:v4");
     let response: Response;
     try {
       response = await fetch("https://api.sarvam.ai/speech-to-text", {
@@ -50,10 +60,15 @@ export async function POST(request: Request) {
       );
     }
     if (!response.ok) {
+      let detail = "";
+      try {
+        detail = await response.text();
+      } catch {}
       console.error("Sarvam transcription failed", {
         status: response.status,
-        model: model || "saaras:v3",
+        model: model || "saaras:v4",
         language,
+        detail,
       });
       throw new HttpError(
         response.status === 413 ? 413 : 502,
